@@ -97,7 +97,7 @@ def update_rule(
     return rule
 
 
-@router.delete("/{rule_id}", status_code=204)
+@router.delete("/{rule_id}", status_code=204, response_model=None)
 def delete_rule(rule_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)) -> None:
     rule = _get_rule_or_404(db, rule_id)
     db.delete(rule)

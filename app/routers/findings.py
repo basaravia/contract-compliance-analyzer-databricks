@@ -104,7 +104,7 @@ def update_finding(
     return finding
 
 
-@router.delete("/{finding_id}", status_code=204)
+@router.delete("/{finding_id}", status_code=204, response_model=None)
 def delete_finding(
     finding_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> None:

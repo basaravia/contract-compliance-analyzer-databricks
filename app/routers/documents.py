@@ -116,7 +116,7 @@ def get_page_png(
     return Response(content=png_bytes, media_type="image/png")
 
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}", status_code=204, response_model=None)
 def delete_document(
     document_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> Response:
@@ -130,4 +130,4 @@ def delete_document(
     db.commit()
     path.unlink(missing_ok=True)
     storage.remove(document.stored_filename)
-    return Response(status_code=204)
+    return Response(status_code=204, response_model=None)
