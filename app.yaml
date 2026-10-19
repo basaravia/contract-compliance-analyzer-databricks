@@ -2,7 +2,9 @@
 # Los valores con `valueFrom` salen de los *recursos* declarados en databricks.yml (la app nunca ve tokens
 # ni claves: se autentica como su principal de servicio). DATABRICKS_HOST, DATABRICKS_CLIENT_ID/SECRET y
 # DATABRICKS_APP_PORT los inyecta la plataforma.
-command: ["python", "run.py"]
+# Mismo arranque que el comparador, probado en este workspace: el `command` no pasa por shell (sin --port $PORT) y
+# uvicorn toma UVICORN_HOST/UVICORN_PORT del entorno. Un solo worker: el estado de sesión vive en memoria.
+command: ["uvicorn", "app.main:app", "--workers", "1"]
 
 env:
   - name: APP_ENV
