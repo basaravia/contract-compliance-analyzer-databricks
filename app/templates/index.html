@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analizador de Cumplimiento Contractual</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Analizador de Cumplimiento Contractual</h1>
+      <p class="subtitle">MVP&nbsp;&mdash; evidencia trazable (p&aacute;gina + coordenadas). No constituye asesor&iacute;a legal.</p>
+    </div>
+    <div class="topbar-meta">
+      <span class="badge" id="auth-badge" data-auth-mode="{{ auth_mode }}">modo: {{ auth_mode }}</span>
+      <span id="user-email" class="badge badge-muted"></span>
+      {% if auth_mode != "local" %}<button type="button" class="btn btn-secondary" id="logout-btn">Cerrar sesi&oacute;n</button>{% endif %}
+    </div>
+  </header>
+
+  <nav class="tabs" id="main-tabs">
+    <button type="button" class="tab-btn active" data-tab="documentos">Documentos</button>
+    <button type="button" class="tab-btn" data-tab="reglas">Reglas</button>
+    <button type="button" class="tab-btn" data-tab="analisis">An&aacute;lisis</button>
+    <button type="button" class="tab-btn" data-tab="revision">Revisi&oacute;n visual</button>
+  </nav>
+
+  <main>
+    <!-- ============ DOCUMENTOS ============ -->
+    <section id="tab-documentos" class="tab-panel active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Subir documento</h2>
+          <form id="upload-form">
+            <label>Tipo
+              <select name="doc_type" id="upload-doc-type" required>
+                <option value="contrato">Contrato</option>
+                <option value="normativa">Normativa</option>
+              </select>
+            </label>
+            <label>T&iacute;tulo
+              <input type="text" name="title" id="upload-title" maxlength="200" placeholder="Ej. Contrato de servicios cloud" />
+            </label>
+            <label>Jurisdicci&oacute;n
+              <input type="text" name="jurisdiction" id="upload-jurisdiction" maxlength="10" value="{{ default_jurisdiction }}" />
+            </label>
+            <label>Archivo PDF
+              <input type="file" name="file" id="upload-file" accept="application/pdf" required />
+            </label>
+            <button type="submit" class="btn btn-primary">Subir</button>
+            <p class="form-msg" id="upload-msg" role="status"></p>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Documentos cargados</h2>
+          <div class="filter-row">
+            <label>Filtrar por tipo
+              <select id="doc-filter-type">
+                <option value="">Todos</option>
+                <option value="contrato">Contrato</option>
+                <option value="normativa">Normativa</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn-secondary" id="refresh-docs">Actualizar</button>
+          </div>
+          <table class="data-table" id="documents-table">
+            <thead>
+              <tr>
+                <th>T&iacute;tulo</th>
+                <th>Tipo</th>
+                <th>Jurisd.</th>
+                <th>P&aacute;g.</th>
+                <th>Estado extracci&oacute;n</th>
+                <th>Escaneado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="documents-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ REGLAS ============ -->
+    <section id="tab-reglas" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Nueva regla</h2>
+          <form id="rule-form">
+            <label>Nombre
+              <input type="text" name="name" id="rule-name" maxlength="200" required />
+            </label>
+            <label>Descripci&oacute;n
+              <textarea name="description" id="rule-description" maxlength="5000" rows="3" required></textarea>
+            </label>
+            <div class="form-row">
+              <label>Categor&iacute;a
+                <input type="text" name="category" id="rule-category" maxlength="100" />
+              </label>
+              <label>Severidad
+                <select name="severity" id="rule-severity">
+                  <option value="alta">Alta</option>
+                  <option value="media" selected>Media</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </label>
+              <label>Jurisdicci&oacute;n
+                <input type="text" name="jurisdiction" id="rule-jurisdiction" maxlength="10" value="{{ default_jurisdiction }}" />
+              </label>
+            </div>
+            <fieldset>
+              <legend>Referencias normativas</legend>
+              <div id="rule-references"></div>
+              <button type="button" class="btn btn-secondary btn-small" id="add-reference">+ A&ntilde;adir referencia</button>
+            </fieldset>
+            <button type="submit" class="btn btn-primary">Crear regla</button>
+            <p class="form-msg" id="rule-msg" role="status"></p>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Importaci&oacute;n masiva de reglas</h2>
+          <p class="hint">
+            Esta secci&oacute;n sirve para cargar varias reglas nuevas de una vez.
+            <strong>No es el editor de una regla existente</strong>: para modificar una regla ya
+            creada usa el bot&oacute;n "Editar" en la tabla de "Reglas existentes".
+          </p>
+          <p class="hint">
+            Formato: bloques separados por una l&iacute;nea <code>---</code>, con campos
+            <code>Regla:</code>, <code>Descripci&oacute;n:</code>, <code>Categor&iacute;a:</code>,
+            <code>Severidad:</code> (alta|media|baja), <code>Jurisdicci&oacute;n:</code> y una o m&aacute;s
+            l&iacute;neas <code>Referencia:</code>.
+          </p>
+          <pre class="example-block">Regla: Cl&aacute;usula de protecci&oacute;n de datos personales
+Descripci&oacute;n: El contrato debe incluir una cl&aacute;usula de tratamiento de datos.
+Categor&iacute;a: proteccion_datos
+Severidad: alta
+Referencia: LOPDP Art. 5
+---
+Regla: Plazo de notificaci&oacute;n de incidentes
+Descripci&oacute;n: El contrato debe fijar un plazo m&aacute;ximo de notificaci&oacute;n.
+Severidad: alta
+Referencia: LOPDP Art. 44</pre>
+          <form id="import-text-form">
+            <textarea id="import-text-area" rows="10" placeholder="Pega aqu&iacute; el texto con el formato de arriba..."></textarea>
+            <button type="submit" class="btn btn-primary">Importar texto</button>
+            <p class="form-msg" id="import-text-msg" role="status"></p>
+            <ul class="error-list" id="import-text-errors"></ul>
+          </form>
+          <h3>Importar JSON</h3>
+          <form id="import-json-form">
+            <input type="file" id="import-json-file" accept="application/json" />
+            <button type="submit" class="btn btn-secondary">Importar JSON</button>
+            <p class="form-msg" id="import-json-msg" role="status"></p>
+          </form>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Reglas existentes</h2>
+        <label class="inline-check"><input type="checkbox" id="rules-active-only" /> Mostrar solo activas</label>
+        <table class="data-table" id="rules-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Categor&iacute;a</th>
+              <th>Severidad</th>
+              <th>Jurisd.</th>
+              <th>Estado</th>
+              <th>Referencias</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rules-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ ANALISIS ============ -->
+    <section id="tab-analisis" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Nuevo an&aacute;lisis</h2>
+          <form id="analysis-form">
+            <label>Contrato
+              <select id="analysis-doc-select" required></select>
+            </label>
+            <fieldset>
+              <legend>Reglas a evaluar (ninguna marcada = todas las activas)</legend>
+              <div id="analysis-rules-list" class="checkbox-list"></div>
+            </fieldset>
+            <button type="submit" class="btn btn-primary">Ejecutar an&aacute;lisis</button>
+            <p class="form-msg" id="analysis-msg" role="status"></p>
+          </form>
+        </div>
+        <div class="card">
+          <h2>An&aacute;lisis existentes</h2>
+          <button type="button" class="btn btn-secondary" id="refresh-analyses">Actualizar</button>
+          <table class="data-table" id="analyses-table">
+            <thead>
+              <tr><th>ID</th><th>Contrato</th><th>Estado</th><th>Creado</th><th></th></tr>
+            </thead>
+            <tbody id="analyses-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" id="analysis-findings-card" hidden>
+        <div class="card-header-row">
+          <h2>Hallazgos del an&aacute;lisis</h2>
+          <div class="export-buttons">
+            <button type="button" class="btn btn-secondary" id="export-pdf-btn">Descargar PDF anotado</button>
+            <button type="button" class="btn btn-secondary" id="export-json-btn">Descargar JSON</button>
+            <button type="button" class="btn btn-primary" id="export-workpaper-btn">Descargar papel de trabajo (Excel)</button>
+            <button type="button" class="btn btn-primary" id="open-review-btn">Abrir revisi&oacute;n visual</button>
+          </div>
+        </div>
+        <table class="data-table" id="findings-table">
+          <thead>
+            <tr>
+              <th>Regla</th><th>Estado</th><th>Severidad</th><th>Confianza</th><th>Manual</th><th>Editado</th><th>P&aacute;gina</th><th>Traza</th>
+            </tr>
+          </thead>
+          <tbody id="findings-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============ REVISION VISUAL ============ -->
+    <section id="tab-revision" class="tab-panel">
+      <div class="card">
+        <h2>Revisi&oacute;n visual de hallazgos</h2>
+        <p class="hint" id="review-empty-hint">Selecciona un an&aacute;lisis en la pesta&ntilde;a "An&aacute;lisis" para revisarlo aqu&iacute;.</p>
+        <div id="review-container" hidden>
+          <div class="review-toolbar">
+            <button type="button" class="btn btn-secondary" id="prev-page-btn">&larr; P&aacute;gina anterior</button>
+            <span id="page-indicator">P&aacute;gina 1</span>
+            <button type="button" class="btn btn-secondary" id="next-page-btn">P&aacute;gina siguiente &rarr;</button>
+            <button type="button" class="btn btn-secondary" id="toggle-create-mode-btn">Modo: seleccionar</button>
+            <span class="hint">Arrastra para mover/redimensionar. En modo crear, dibuja un rect&aacute;ngulo nuevo. Supr elimina el seleccionado.</span>
+          </div>
+          <div class="review-body">
+            <div class="canvas-wrap">
+              <canvas id="review-canvas" tabindex="0"></canvas>
+            </div>
+            <aside class="side-panel" id="finding-detail-panel">
+              <h3>Detalle del hallazgo</h3>
+              <p class="hint" id="finding-detail-empty">Selecciona un rect&aacute;ngulo en el PDF, o crea uno nuevo.</p>
+              <div id="finding-detail-content" hidden>
+                <dl class="detail-list" id="finding-detail-dl"></dl>
+                <div id="finding-detail-trace"></div>
+                <label>Cambiar estado manualmente
+                  <select id="finding-status-select">
+                    <option value="cumple">Cumple</option>
+                    <option value="no_cumple">No cumple</option>
+                    <option value="parcial">Parcial</option>
+                    <option value="no_determinable">No determinable</option>
+                    <option value="requiere_revision">Requiere revisi&oacute;n</option>
+                  </select>
+                </label>
+                <button type="button" class="btn btn-secondary btn-small" id="save-status-btn">Guardar estado</button>
+                <button type="button" class="btn btn-danger btn-small" id="delete-finding-btn">Eliminar hallazgo</button>
+              </div>
+              <div id="create-finding-form" hidden>
+                <h4>Nueva anotaci&oacute;n</h4>
+                <label>Regla
+                  <select id="create-finding-rule-select"></select>
+                </label>
+                <button type="button" class="btn btn-primary btn-small" id="confirm-create-finding-btn">Crear hallazgo</button>
+                <button type="button" class="btn btn-secondary btn-small" id="cancel-create-finding-btn">Cancelar</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ EDITOR DE REGLA (modal, estilo VS Code: Formulario / JSON) ============ -->
+  <div class="modal-overlay" id="rule-editor-overlay" hidden>
+    <div class="modal-dialog" id="rule-editor-dialog" role="dialog" aria-modal="true" aria-labelledby="rule-editor-title">
+      <div class="modal-header">
+        <h2 id="rule-editor-title">Editar regla</h2>
+        <button type="button" class="modal-close" id="rule-editor-close" aria-label="Cerrar editor">&times;</button>
+      </div>
+      <div class="modal-tabs" role="tablist" aria-label="Modo de edici&oacute;n de la regla">
+        <button type="button" class="modal-tab-btn active" id="rule-editor-tab-form" role="tab" aria-selected="true" aria-controls="rule-editor-panel-form" data-editor-tab="form">Formulario</button>
+        <button type="button" class="modal-tab-btn" id="rule-editor-tab-json" role="tab" aria-selected="false" aria-controls="rule-editor-panel-json" data-editor-tab="json">JSON</button>
+      </div>
+      <div class="modal-body">
+        <div id="rule-editor-panel-form" class="modal-tab-panel active" role="tabpanel" aria-labelledby="rule-editor-tab-form">
+          <form id="rule-editor-form">
+            <label>Nombre
+              <input type="text" id="edit-rule-name" maxlength="200" required />
+            </label>
+            <label>Descripci&oacute;n
+              <textarea id="edit-rule-description" maxlength="5000" rows="3" required></textarea>
+            </label>
+            <div class="form-row">
+              <label>Categor&iacute;a
+                <input type="text" id="edit-rule-category" maxlength="100" />
+              </label>
+              <label>Severidad
+                <select id="edit-rule-severity">
+                  <option value="alta">Alta</option>
+                  <option value="media">Media</option>
+                  <option value="baja">Baja</option>
+                </select>
+              </label>
+              <label>Jurisdicci&oacute;n
+                <input type="text" id="edit-rule-jurisdiction" maxlength="10" disabled />
+              </label>
+            </div>
+            <p class="hint">La jurisdicci&oacute;n se fija al crear la regla y no puede modificarse desde este editor.</p>
+            <fieldset>
+              <legend>Referencias normativas</legend>
+              <div id="edit-rule-references"></div>
+              <button type="button" class="btn btn-secondary btn-small" id="edit-add-reference">+ A&ntilde;adir referencia</button>
+            </fieldset>
+            <div class="switch-field">
+              <button type="button" class="switch" id="edit-rule-active-switch" role="switch">
+                <span class="switch-track"><span class="switch-thumb"></span></span>
+              </button>
+              <span id="edit-rule-active-label" class="switch-label"></span>
+            </div>
+          </form>
+        </div>
+        <div id="rule-editor-panel-json" class="modal-tab-panel" role="tabpanel" aria-labelledby="rule-editor-tab-json" hidden>
+          <textarea id="rule-editor-json" class="json-editor" spellcheck="false" rows="18"></textarea>
+          <p class="hint">
+            Este es el mismo objeto que el formulario: los cambios v&aacute;lidos aqu&iacute; se reflejan all&aacute;
+            y viceversa. Los campos <code>id</code>, <code>jurisdiction</code>, <code>created_by</code>,
+            <code>created_at</code> y <code>updated_at</code> son informativos y no se env&iacute;an al guardar.
+          </p>
+          <p class="form-msg error" id="rule-editor-json-error" role="alert"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <p class="form-msg" id="rule-editor-msg" role="status"></p>
+        <div class="modal-footer-actions">
+          <button type="button" class="btn btn-secondary" id="rule-editor-cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="rule-editor-save">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template id="template-doc-row">
+    <tr>
+      <td class="cell-title"></td>
+      <td class="cell-type"></td>
+      <td class="cell-jurisdiction"></td>
+      <td class="cell-pages"></td>
+      <td class="cell-status"></td>
+      <td class="cell-scanned"></td>
+      <td class="cell-actions"><button type="button" class="btn btn-danger btn-small btn-delete-doc">Eliminar</button></td>
+    </tr>
+  </template>
+
+  <template id="template-rule-row">
+    <tr>
+      <td class="cell-name"></td>
+      <td class="cell-category"></td>
+      <td class="cell-severity"></td>
+      <td class="cell-jurisdiction"></td>
+      <td class="cell-active">
+        <div class="active-switch-wrap">
+          <button type="button" class="switch btn-toggle-rule" role="switch">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </button>
+          <span class="switch-label"></span>
+        </div>
+      </td>
+      <td class="cell-refs"></td>
+      <td class="cell-actions">
+        <button type="button" class="btn btn-secondary btn-small btn-edit-rule">Editar</button>
+        <button type="button" class="btn btn-danger btn-small btn-delete-rule">Eliminar</button>
+      </td>
+    </tr>
+  </template>
+
+  <template id="template-analysis-row">
+    <tr>
+      <td class="cell-id"></td>
+      <td class="cell-doc"></td>
+      <td class="cell-status"></td>
+      <td class="cell-created"></td>
+      <td class="cell-actions"><button type="button" class="btn btn-secondary btn-small btn-view-analysis">Ver</button></td>
+    </tr>
+  </template>
+
+  <template id="template-finding-row">
+    <tr>
+      <td class="cell-rule"></td>
+      <td class="cell-status"></td>
+      <td class="cell-severity"></td>
+      <td class="cell-confidence"></td>
+      <td class="cell-manual"></td>
+      <td class="cell-edited"></td>
+      <td class="cell-page"></td>
+      <td class="cell-trace"></td>
+    </tr>
+  </template>
+
+  <template id="template-reference-row">
+    <div class="reference-row">
+      <input type="text" class="ref-citation" placeholder="Cita, ej. LOPDP Art. 5" maxlength="300" />
+      <input type="number" class="ref-page" placeholder="P&aacute;g." min="1" />
+      <button type="button" class="btn btn-secondary btn-small btn-remove-reference">Quitar</button>
+    </div>
+  </template>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

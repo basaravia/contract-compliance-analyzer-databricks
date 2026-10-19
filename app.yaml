@@ -1,0 +1,44 @@
+# Databricks Apps — manifiesto de ejecución.
+# Los valores con `valueFrom` salen de los *recursos* declarados en databricks.yml (la app nunca ve tokens
+# ni claves: se autentica como su principal de servicio). DATABRICKS_HOST, DATABRICKS_CLIENT_ID/SECRET y
+# DATABRICKS_APP_PORT los inyecta la plataforma.
+command: ["python", "run.py"]
+
+env:
+  - name: APP_ENV
+    value: production
+  # El SSO del workspace autentica ANTES de llegar a la app; ella solo lee X-Forwarded-Email.
+  - name: AUTH_MODE
+    value: databricks
+
+  # LLM: Azure AI Foundry, variables FOUNDRY_AI_*. Los REEMPLAZAR-… se cambian por los datos
+  # reales del workspace; el repo NUNCA lleva endpoints ni tokens reales. El token llega por `valueFrom`
+  # (recurso de tipo secreto de la app declarado en databricks.yml).
+  - name: LLM_PROVIDER
+    value: foundry
+  - name: FOUNDRY_AI_ENDPOINT
+    value: "REEMPLAZAR-endpoint-de-foundry"
+  - name: FOUNDRY_AI_API_VERSION
+    value: "REEMPLAZAR-api-version"
+  - name: FOUNDRY_AI_DEPLOYMENT
+    value: "REEMPLAZAR-deployment-del-llm"
+  - name: FOUNDRY_OMIT_TEMPERATURE
+    value: "true"  # GPT-5.x (razonamiento): solo admite la temperatura de fábrica; poner "false" con GPT-4.x
+  - name: FOUNDRY_AI_TOKEN
+    valueFrom: foundry-token
+  # Embeddings locales y deterministas (mock) para el MVP; cambiar aquí si se habilita otro proveedor.
+  - name: EMBEDDING_PROVIDER
+    value: mock
+
+  # Sin Lakebase ni Volume: SQLite y PDF en el disco local del contenedor (/tmp). Es EFÍMERO: los datos
+  # se pierden al reiniciar o redesplegar la app (reglas, análisis, PDF). Para persistir, ver
+  # deploy/databricks/README.md ("Persistencia opcional").
+  - name: DATABASE_URL
+    value: sqlite:////tmp/ccap/app.db
+  - name: UPLOAD_DIR
+    value: /tmp/ccap/uploads
+  - name: MAX_UPLOAD_MB
+    value: "25"
+
+  - name: PYTHONUNBUFFERED
+    value: "1"

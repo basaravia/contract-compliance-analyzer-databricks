@@ -1,0 +1,53 @@
+# Databricks Asset Bundle: define la app y sus recursos (permisos mínimos para su principal de servicio).
+# Despliegue: scripts/deploy_databricks.sh <dev|prod>   (ver deploy/databricks/README.md)
+bundle:
+  name: contract-compliance-analyzer
+
+variables:
+  foundry_secret_scope:
+    description: Scope de secretos de Databricks que contiene el token de Azure AI Foundry.
+  foundry_secret_key:
+    description: Clave dentro del scope con el token de Foundry.
+    default: foundry_ai_token
+
+# El build del frontend (frontend/dist) está en .gitignore; sin `include` el bundle no lo subiría.
+sync:
+  include:
+    - frontend/dist/**
+  exclude:
+    - .venv
+    - .env*
+    - .git
+    - .claude
+    - .pytest_cache
+    - tests
+    - docs
+    - deploy
+    - scripts
+    - frontend/node_modules
+    - frontend/src
+    - data/uploads
+    - data/app.db
+    - requirements-dev.txt
+
+resources:
+  apps:
+    contract_analyzer:
+      name: ${bundle.target}-contract-analyzer
+      description: Analizador de cumplimiento contractual con evidencia trazable (FastAPI + React)
+      source_code_path: .
+      resources:
+        - name: foundry-token
+          secret:
+            scope: ${var.foundry_secret_scope}
+            key: ${var.foundry_secret_key}
+            permission: READ
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

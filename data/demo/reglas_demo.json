@@ -1,0 +1,71 @@
+{
+  "_aviso": "Reglas de ejemplo con fines ILUSTRATIVOS para demostrar el MVP. No son un catálogo normativo verificado ni constituyen asesoría legal. Las referencias a la LOPDP de Ecuador son temáticas, no citas verificadas artículo por artículo.",
+  "rules": [
+    {
+      "name": "Cláusula de protección de datos personales",
+      "description": "El contrato debe incluir una cláusula explícita en la que el proveedor se compromete a tratar los datos personales conforme a los principios de licitud, finalidad y proporcionalidad, evitando usarlos para fines distintos a los pactados.",
+      "jurisdiction": "EC",
+      "category": "proteccion_datos",
+      "severity": "alta",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 5 (principios de tratamiento de datos personales)", "page": null }
+      ]
+    },
+    {
+      "name": "Designación de encargado del tratamiento",
+      "description": "El contrato debe identificar expresamente quién actúa como Responsable y quién como Encargado del tratamiento de datos personales, y establecer que el Encargado solo trata los datos siguiendo instrucciones documentadas del Responsable.",
+      "jurisdiction": "EC",
+      "category": "proteccion_datos",
+      "severity": "media",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 46 (obligaciones del encargado del tratamiento)", "page": null }
+      ]
+    },
+    {
+      "name": "Plazo de notificación de incidentes de seguridad",
+      "description": "El contrato debe establecer un plazo máximo, expresado en un número concreto de horas o días, para que el proveedor notifique al cliente ante un incidente de seguridad que afecte datos personales.",
+      "jurisdiction": "EC",
+      "category": "seguridad",
+      "severity": "alta",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 44 (notificación de vulneraciones de seguridad)", "page": null }
+      ]
+    },
+    {
+      "name": "Transferencia internacional de datos",
+      "description": "Si el contrato contempla la posibilidad de que los datos personales sean transferidos o almacenados fuera del país, debe incluir las salvaguardas exigidas para transferencias internacionales de datos personales.",
+      "jurisdiction": "EC",
+      "category": "proteccion_datos",
+      "severity": "alta",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 49 (transferencias internacionales de datos personales)", "page": null }
+      ]
+    },
+    {
+      "name": "Eliminación de datos al finalizar el contrato",
+      "description": "El contrato debe obligar al proveedor a eliminar o devolver de forma segura los datos personales del cliente al finalizar la relación contractual, dentro de un plazo determinado.",
+      "jurisdiction": "EC",
+      "category": "proteccion_datos",
+      "severity": "media",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 47 (finalización del tratamiento por el encargado)", "page": null }
+      ]
+    },
+    {
+      "name": "Derecho de auditoría sobre medidas de seguridad",
+      "description": "El contrato debe reconocer el derecho del cliente a auditar o solicitar evidencia concreta y verificable de las medidas técnicas y organizativas de seguridad implementadas por el proveedor, con plazos de respuesta definidos.",
+      "jurisdiction": "EC",
+      "category": "seguridad",
+      "severity": "media",
+      "active": true,
+      "references": [
+        { "citation": "LOPDP Art. 45 (medidas de seguridad)", "page": null }
+      ]
+    }
+  ]
+}

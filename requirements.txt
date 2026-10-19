@@ -1,0 +1,32 @@
+fastapi>=0.111,<1.0
+uvicorn[standard]>=0.30,<1.0
+sqlalchemy>=2.0,<3.0
+pydantic>=2.7,<3.0
+pydantic-settings>=2.2,<3.0
+python-multipart>=0.0.9
+jinja2>=3.1
+PyMuPDF>=1.24
+numpy>=1.26
+faiss-cpu>=1.8
+httpx>=0.27
+python-dotenv>=1.0
+itsdangerous>=2.2
+pyjwt[crypto]>=2.8,<3.0
+openpyxl>=3.1,<4.0   # papel de trabajo en Excel (cero tokens)
+
+# --- Databricks Apps ---
+databricks-sdk>=0.40          # auth del principal de servicio, Volumes de Unity Catalog, tokens OAuth
+psycopg[binary]>=3.2,<4.0     # Lakebase (Postgres gestionado)
+
+# --- Opcionales (no requeridos para arrancar el MVP) ---
+# pytesseract y Pillow habilitan OCR real para PDFs escaneados.
+# Sin ellos, las páginas escaneadas se marcan como "scanned_no_ocr"
+# y las reglas correspondientes quedan en no_determinable.
+# pytesseract>=0.3.10
+# Pillow>=10.0
+
+# google-cloud-aiplatform y langchain-google-vertexai habilitan el
+# adaptador real de Vertex AI (gemini-embedding-001 / gemini-3.6-flash).
+# Sin ellos, el sistema usa automáticamente los proveedores mock/locales.
+# google-cloud-aiplatform>=1.60
+# langchain-google-vertexai>=1.0

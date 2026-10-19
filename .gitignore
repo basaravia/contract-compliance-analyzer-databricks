@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/app.db
+data/uploads/*
+!data/uploads/.gitkeep
+data/faiss_indices/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.DS_Store
+claude-result.json
+
+# Frontend React
+frontend/node_modules/
+frontend/dist/
+
+# Databricks
+.databricks/
+.env.*
+!.env.example
