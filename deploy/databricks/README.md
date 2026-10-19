@@ -18,7 +18,7 @@ de las cabeceras que el proxy añade. Se autentica contra los demás servicios c
 | `app.yaml` | Comando de arranque y variables (`valueFrom` apunta a los recursos). |
 | `databricks.yml` | Bundle: la app + recursos (secreto del token de Foundry, `READ`). |
 | `run.py` | Escucha en `0.0.0.0:$DATABRICKS_APP_PORT`, 1 worker. |
-| `frontend/` | React + Vite + TypeScript. `npm run build` → `frontend/dist`, que FastAPI sirve. |
+| `frontend/` | React + Vite + TypeScript. `npm run build` → `frontend/dist`, que FastAPI sirve. El build **va versionado** en el repo para poder desplegar desde una carpeta Git de Databricks sin Node; si cambias `frontend/src`, reconstruye (`npm run build`) y haz commit de `dist`. |
 | `scripts/deploy_databricks.sh` | Build + pruebas del frontend + `bundle validate/deploy/run`. |
 
 ## Requisitos previos (una sola vez)

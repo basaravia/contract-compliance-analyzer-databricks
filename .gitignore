@@ -16,7 +16,6 @@ claude-result.json
 
 # Frontend React
 frontend/node_modules/
-frontend/dist/
 
 # Databricks
 .databricks/
