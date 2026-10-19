@@ -71,6 +71,12 @@ def validate_runtime_config() -> None:
     # Con AUTH_MODE=databricks no se firma ninguna cookie de sesión: SECRET_KEY no protege nada.
     if settings.auth_mode != "databricks" and (settings.secret_key == DEFAULT_SECRET or len(settings.secret_key) < 32):
         problems.append("SECRET_KEY es la de ejemplo o tiene menos de 32 caracteres")
+    from app import foundry_config
+
+    if settings.llm_provider == "foundry" and foundry_config.missing():
+        problems.append("LLM_PROVIDER=foundry sin configurar: " + ", ".join(foundry_config.missing()))
+    if settings.embedding_provider == "foundry" and foundry_config.missing(embeddings=True):
+        problems.append("EMBEDDING_PROVIDER=foundry sin configurar: " + ", ".join(foundry_config.missing(embeddings=True)))
     if problems:
         raise RuntimeError("Configuración insegura para APP_ENV=" + settings.app_env + ": " + "; ".join(problems))
 

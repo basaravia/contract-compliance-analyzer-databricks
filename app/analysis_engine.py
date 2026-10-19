@@ -249,7 +249,10 @@ def run_analysis(db: Session, analysis: Analysis, document: Document, rules: lis
 
     analysis.analysis_trace = AnalysisTrace(
         embedding_provider=settings.embedding_provider,
-        embedding_model=settings.vertex_embedding_model if settings.embedding_provider == "vertex" else None,
+        embedding_model={
+            "vertex": settings.vertex_embedding_model,
+            "foundry": settings.foundry_ai_embed_deployment or None,
+        }.get(settings.embedding_provider),
         llm_provider=settings.llm_provider,
         llm_model=_llm_model_name(),
         retrieval_top_k=TOP_K,

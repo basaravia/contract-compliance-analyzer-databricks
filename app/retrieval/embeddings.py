@@ -2,15 +2,18 @@
 y fallback local/mock determinista para poder arrancar el MVP sin
 credenciales de Google Cloud.
 
-Selección por configuración: EMBEDDING_PROVIDER=mock|vertex.
+Selección por configuración: EMBEDDING_PROVIDER=mock|vertex|foundry.
 """
 from __future__ import annotations
 
 import hashlib
+import time
 from abc import ABC, abstractmethod
 
+import httpx
 import numpy as np
 
+from app import foundry_config
 from app.config import settings
 
 MOCK_EMBEDDING_DIM = 128
@@ -95,7 +98,60 @@ class VertexEmbeddingProvider(EmbeddingProvider):
         return arr / norms
 
 
+class FoundryEmbeddingProvider(EmbeddingProvider):
+    """Embeddings de Azure AI Foundry (p. ej. text-embedding-3-large, 3072 dimensiones).
+
+    Mismas variables FOUNDRY_AI_* que el LLM más FOUNDRY_AI_EMBED_DEPLOYMENT. Sin respaldo silencioso a mock:
+    si falta configuración o la llamada falla, el error es visible (un índice mock aparentaría semántica real)."""
+
+    BATCH = 16
+    RETRIES = 3
+
+    def __init__(self):
+        missing = foundry_config.missing(embeddings=True)
+        if missing:
+            raise RuntimeError(f"Faltan variables de configuración para embeddings de Foundry: {', '.join(missing)}")
+        self.dim = settings.foundry_embed_dim
+        self._client = httpx.Client(
+            base_url=foundry_config.deployment_base_url(settings.foundry_ai_embed_deployment),
+            params={"api-version": settings.foundry_ai_api_version},
+            headers={"api-key": settings.foundry_ai_token},
+            timeout=settings.foundry_timeout_s,
+        )
+
+    def _post(self, batch: list[str]) -> list[list[float]]:
+        last: Exception | None = None
+        for attempt in range(self.RETRIES):
+            try:
+                resp = self._client.post("/embeddings", json={"input": batch})
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    raise httpx.HTTPStatusError("reintentable", request=resp.request, response=resp)
+                resp.raise_for_status()
+                data = sorted(resp.json()["data"], key=lambda d: d["index"])
+                return [d["embedding"] for d in data]
+            except (httpx.HTTPError, KeyError, ValueError) as e:
+                last = e
+                time.sleep(min(2**attempt, 8))
+        # Solo el tipo: el mensaje de httpx puede incluir URL o cabeceras.
+        raise RuntimeError(f"Fallo al obtener embeddings de Foundry ({type(last).__name__})")
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        vectors: list[list[float]] = []
+        for i in range(0, len(texts), self.BATCH):
+            vectors.extend(self._post([t if t.strip() else " " for t in texts[i : i + self.BATCH]]))
+        arr = np.array(vectors, dtype="float32").reshape(len(texts), -1)
+        if arr.shape[1] != self.dim:
+            raise RuntimeError(
+                f"El modelo devolvió {arr.shape[1]} dimensiones y se esperaban {self.dim} (FOUNDRY_EMBED_DIM)"
+            )
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        return arr / norms
+
+
 def get_embedding_provider() -> EmbeddingProvider:
+    if settings.embedding_provider == "foundry":
+        return FoundryEmbeddingProvider()  # sin respaldo a mock: ver la clase
     if settings.embedding_provider == "vertex":
         try:
             return VertexEmbeddingProvider()

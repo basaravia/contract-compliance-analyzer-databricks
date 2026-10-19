@@ -232,3 +232,66 @@ def test_foundry_evaluator_requires_config_and_rejects_placeholders(monkeypatch)
     _foundry(monkeypatch, foundry_ai_endpoint="http://x.example")
     with pytest.raises(RuntimeError, match="https"):
         FoundryRuleEvaluator()
+
+
+# --- Embeddings de Foundry -----------------------------------------------------------------------------
+def _foundry_emb(monkeypatch, **over):
+    _foundry(monkeypatch, foundry_ai_embed_deployment="emb-3-large", foundry_embed_dim=4, embedding_provider="foundry")
+    for k, v in over.items():
+        monkeypatch.setattr(settings, k, v)
+
+
+def test_foundry_embeddings_batch_normalize_and_keep_order(monkeypatch):
+    from app.retrieval.embeddings import FoundryEmbeddingProvider, get_embedding_provider
+
+    _foundry_emb(monkeypatch)
+    emb = get_embedding_provider()
+    assert isinstance(emb, FoundryEmbeddingProvider)
+    seen = []
+
+    def handler(req: httpx.Request):
+        body = json.loads(req.content)
+        seen.append((str(req.url), req.headers["api-key"], len(body["input"])))
+        # índices devueltos al revés: el proveedor debe reordenarlos
+        data = [{"index": i, "embedding": [float(i + 1), 0, 0, 0]} for i in range(len(body["input"]))][::-1]
+        return httpx.Response(200, json={"data": data})
+
+    emb._client = httpx.Client(base_url=emb._client.base_url, params=emb._client.params, headers=emb._client.headers,
+                               transport=httpx.MockTransport(handler))
+    out = emb.embed([f"t{i}" for i in range(20)])  # 16 + 4
+    assert out.shape == (20, 4) and [s[2] for s in seen] == [16, 4]
+    assert seen[0][0] == "https://rec.openai.azure.com/openai/deployments/emb-3-large/embeddings?api-version=2024-10-21"
+    assert seen[0][1] == "tok" and abs(float((out[0] ** 2).sum()) - 1.0) < 1e-6
+
+
+def test_foundry_embeddings_never_fall_back_to_mock(monkeypatch):
+    from app.retrieval.embeddings import get_embedding_provider
+
+    _foundry_emb(monkeypatch, foundry_ai_embed_deployment="REEMPLAZAR-deployment-de-embeddings")
+    with pytest.raises(RuntimeError, match="FOUNDRY_AI_EMBED_DEPLOYMENT"):
+        get_embedding_provider()
+
+
+def test_foundry_embeddings_fail_visibly_and_check_dimension(monkeypatch):
+    from app.retrieval.embeddings import get_embedding_provider
+
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    _foundry_emb(monkeypatch)
+    emb = get_embedding_provider()
+    emb._client = httpx.Client(base_url=emb._client.base_url, transport=httpx.MockTransport(lambda r: httpx.Response(503)))
+    with pytest.raises(RuntimeError, match="Foundry"):
+        emb.embed(["x"])
+    emb._client = httpx.Client(base_url=emb._client.base_url, transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json={"data": [{"index": 0, "embedding": [1.0, 2.0]}]})))
+    with pytest.raises(RuntimeError, match="dimensiones"):
+        emb.embed(["x"])
+
+
+def test_production_start_requires_foundry_config(monkeypatch):
+    from app.main import validate_runtime_config
+
+    _foundry_emb(monkeypatch, foundry_ai_embed_deployment="", llm_provider="foundry")
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "auth_mode", "databricks")
+    with pytest.raises(RuntimeError, match="EMBEDDING_PROVIDER=foundry"):
+        validate_runtime_config()

@@ -26,9 +26,11 @@ env:
     value: "true"  # GPT-5.x (razonamiento): solo admite la temperatura de fábrica; poner "false" con GPT-4.x
   - name: FOUNDRY_AI_TOKEN
     valueFrom: foundry-token
-  # Embeddings locales y deterministas (mock) para el MVP; cambiar aquí si se habilita otro proveedor.
+  # Embeddings: deployment de text-embedding-3-large en el mismo recurso de Foundry (3072 dimensiones).
   - name: EMBEDDING_PROVIDER
-    value: mock
+    value: foundry
+  - name: FOUNDRY_AI_EMBED_DEPLOYMENT
+    value: "REEMPLAZAR-deployment-de-embeddings"
 
   # Sin Lakebase ni Volume: SQLite y PDF en el disco local del contenedor (/tmp). Es EFÍMERO: los datos
   # se pierden al reiniciar o redesplegar la app (reglas, análisis, PDF). Para persistir, ver

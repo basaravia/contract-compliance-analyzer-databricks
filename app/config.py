@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     oidc_redirect_uri: str = "http://localhost:8000/auth/callback"
 
     # Embeddings / LLM
-    embedding_provider: str = "mock"  # mock | vertex
+    embedding_provider: str = "mock"  # mock | vertex | foundry
     llm_provider: str = "mock"  # mock | vertex | groq | foundry
 
     google_cloud_project: str = ""
@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     foundry_ai_api_version: str = ""
     foundry_ai_token: str = ""
     foundry_ai_deployment: str = ""
+    foundry_ai_embed_deployment: str = ""  # p. ej. el deployment de text-embedding-3-large
+    foundry_embed_dim: int = 3072  # text-embedding-3-large
     foundry_omit_temperature: bool = False  # GPT-5.x (razonamiento) solo acepta la temperatura de fábrica
     foundry_timeout_s: float = 60.0
     # Ruta de un Volume de Unity Catalog (/Volumes/<catalogo>/<esquema>/<volumen>/...) donde se guarda la copia

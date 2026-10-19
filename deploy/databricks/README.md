@@ -26,7 +26,7 @@ de las cabeceras que el proxy añade. Se autentica contra los demás servicios c
 2. Nada más: sin Lakebase ni Volume. Todo vive en el disco del contenedor.
 3. **Token de Azure AI Foundry** en un scope de secretos (p. ej. `databricks secrets create-scope contratos` y
    `databricks secrets put-secret contratos foundry_ai_token`). El bundle lo expone a la app como recurso `foundry-token`.
-4. En `app.yaml`, reemplaza los `REEMPLAZAR-…` (endpoint, api-version, deployment). No se versionan datos reales.
+4. En `app.yaml`, reemplaza los `REEMPLAZAR-…` (endpoint, api-version, deployment del LLM y de embeddings). No se versionan datos reales.
    `FOUNDRY_OMIT_TEMPERATURE=true` para GPT-5.x; `false` con GPT-4.x.
 5. Node 20+ en la máquina que despliega.
 
@@ -65,8 +65,9 @@ usarla. Por defecto nadie más que el propietario puede abrirla.
 - **Sin login propio.** La autenticación es el SSO del workspace; esta rama no incluye login con contraseña.
 - **`SECRET_KEY` no se usa** con `AUTH_MODE=databricks` (no se firma ninguna cookie de sesión).
 - **CSRF se mantiene** (cookie doble-envío) en todas las escrituras.
-- **Embeddings** son el proveedor local determinista (`mock`). Para calidad real, el siguiente paso es un
-  deployment de embeddings de Foundry (`FOUNDRY_AI_EMBED_DEPLOYMENT`).
+- **Embeddings** vienen de Foundry (`text-embedding-3-large`, 3072 dim) y se indexan con FAISS dentro de la app. Si falta
+  configuración o Foundry falla, el análisis falla con error visible: no hay respaldo silencioso a `mock`. Con
+  otro modelo de embeddings, ajusta `FOUNDRY_EMBED_DIM`.
 
 ## Sin verificar contra un workspace real
 Este despliegue se preparó sin un workspace autenticado (el perfil `DEFAULT` del CLI estaba caducado). Se comprobó

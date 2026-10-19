@@ -23,10 +23,7 @@ def get_rule_evaluator() -> RuleEvaluator:
         except Exception:
             return MockRuleEvaluator()
     if settings.llm_provider == "foundry":
-        try:
-            from app.llm.foundry import FoundryRuleEvaluator
+        from app.llm.foundry import FoundryRuleEvaluator
 
-            return FoundryRuleEvaluator()
-        except Exception:
-            return MockRuleEvaluator()
+        return FoundryRuleEvaluator()  # sin respaldo a mock: un LLM simulado aparentaría un análisis real
     return MockRuleEvaluator()
