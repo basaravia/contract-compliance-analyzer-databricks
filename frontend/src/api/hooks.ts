@@ -12,6 +12,7 @@ import type {
   RegionProposal,
   Rule,
   RuleInput,
+  RulePreview,
   User,
 } from "./types";
 
@@ -145,3 +146,14 @@ export function useFindingMutations(analysisId: string) {
     }),
   };
 }
+
+/** Vista previa de una importación (no guarda nada): lo que se cargaría y qué filas corregir. */
+export const usePreviewRules = () =>
+  useMutation({
+    mutationFn: (v: { kind: "text"; text: string } | { kind: "file"; file: File }) => {
+      if (v.kind === "text") return apiJson<RulePreview>("/api/rules/preview-text", "POST", { text: v.text });
+      const form = new FormData();
+      form.set("file", v.file);
+      return api<RulePreview>("/api/rules/preview-file", { method: "POST", body: form });
+    },
+  });

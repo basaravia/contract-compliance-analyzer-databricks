@@ -1,20 +1,10 @@
-import { useRef, useState, type FormEvent } from "react";
-import { ApiError, errorMessage } from "../api/client";
-import { useCreateRule, useDeleteRule, useImportRules, useRules, useUpdateRule } from "../api/hooks";
+import { useState, type FormEvent } from "react";
+import { errorMessage } from "../api/client";
+import { useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../api/hooks";
 import type { Rule, Severity } from "../api/types";
 import { ReferenceFields, toRefInput, type RefDraft } from "../components/ReferenceFields";
 import { RuleEditorDialog } from "../components/RuleEditorDialog";
-
-const EXAMPLE = `Regla: Cláusula de protección de datos personales
-Descripción: El contrato debe incluir una cláusula de tratamiento de datos.
-Categoría: proteccion_datos
-Severidad: alta
-Referencia: LOPDP Art. 5
----
-Regla: Plazo de notificación de incidentes
-Descripción: El contrato debe fijar un plazo máximo de notificación.
-Severidad: alta
-Referencia: LOPDP Art. 44`;
+import { RuleImportWizard } from "../components/RuleImportWizard";
 
 type Msg = { text: string; kind: "" | "error" | "success" };
 
@@ -91,90 +81,6 @@ function NewRuleForm() {
   );
 }
 
-function ImportCard() {
-  const imp = useImportRules();
-  const [text, setText] = useState("");
-  const [textMsg, setTextMsg] = useState<Msg>({ text: "", kind: "" });
-  const [formatErrors, setFormatErrors] = useState<{ bloque: number | string; error: string }[]>([]);
-  const [jsonMsg, setJsonMsg] = useState<Msg>({ text: "", kind: "" });
-  const [jsonFile, setJsonFile] = useState<File | null>(null);
-  const jsonFormRef = useRef<HTMLFormElement>(null); // tras un `await`, `e.currentTarget` ya es null
-
-  const importText = async (e: FormEvent) => {
-    e.preventDefault();
-    setFormatErrors([]);
-    try {
-      await imp.mutateAsync({ kind: "text", text });
-      setTextMsg({ text: "Reglas importadas correctamente.", kind: "success" });
-      setText("");
-    } catch (err) {
-      setTextMsg({ text: errorMessage(err), kind: "error" });
-      if (err instanceof ApiError) setFormatErrors(err.errors);
-    }
-  };
-
-  const importJson = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!jsonFile) return setJsonMsg({ text: "Selecciona un archivo JSON.", kind: "error" });
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await jsonFile.text());
-    } catch {
-      return setJsonMsg({ text: "El archivo no contiene JSON válido.", kind: "error" });
-    }
-    try {
-      await imp.mutateAsync({ kind: "json", payload: Array.isArray(parsed) ? { rules: parsed } : parsed });
-      setJsonMsg({ text: "Reglas importadas correctamente.", kind: "success" });
-      setJsonFile(null);
-      jsonFormRef.current?.reset();
-    } catch (err) {
-      setJsonMsg({ text: errorMessage(err), kind: "error" });
-    }
-  };
-
-  return (
-    <div className="card">
-      <h2>Importación masiva de reglas</h2>
-      <p className="hint">
-        Sirve para cargar varias reglas nuevas de una vez. <strong>No es el editor de una regla existente</strong>: para modificarla
-        usa «Editar» en la tabla de reglas.
-      </p>
-      <p className="hint">
-        Formato: bloques separados por una línea <code>---</code>, con campos <code>Regla:</code>, <code>Descripción:</code>,{" "}
-        <code>Categoría:</code>, <code>Severidad:</code> (alta|media|baja), <code>Jurisdicción:</code> y una o más líneas{" "}
-        <code>Referencia:</code>.
-      </p>
-      <pre className="example-block">{EXAMPLE}</pre>
-      <form onSubmit={importText}>
-        <textarea rows={10} placeholder="Pega aquí el texto con el formato de arriba…" aria-label="Texto de reglas" value={text} onChange={(e) => setText(e.target.value)} />
-        <button type="submit" className="btn btn-primary" disabled={imp.isPending || !text.trim()}>
-          {imp.isPending ? "Importando…" : "Importar texto"}
-        </button>
-        <p className={"form-msg " + textMsg.kind} role="status">
-          {textMsg.text}
-        </p>
-        <ul className="error-list">
-          {formatErrors.map((x, i) => (
-            <li key={i}>
-              Bloque {x.bloque}: {x.error}
-            </li>
-          ))}
-        </ul>
-      </form>
-      <h3>Importar JSON</h3>
-      <form ref={jsonFormRef} onSubmit={importJson}>
-        <input type="file" accept="application/json" aria-label="Archivo JSON" onChange={(e) => setJsonFile(e.target.files?.[0] ?? null)} />
-        <button type="submit" className="btn btn-secondary" disabled={imp.isPending}>
-          {imp.isPending ? "Importando…" : "Importar JSON"}
-        </button>
-        <p className={"form-msg " + jsonMsg.kind} role="status">
-          {jsonMsg.text}
-        </p>
-      </form>
-    </div>
-  );
-}
-
 export function RulesPage() {
   const rules = useRules();
   const update = useUpdateRule();
@@ -187,7 +93,7 @@ export function RulesPage() {
     <>
       <div className="grid-2">
         <NewRuleForm />
-        <ImportCard />
+        <RuleImportWizard />
       </div>
       <div className="card">
         <h2>Reglas existentes</h2>

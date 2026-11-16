@@ -392,12 +392,12 @@ legend { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.3rem; }
 }
 .upload-progress { margin-top: 0.5rem; }
 
-.analysis-progress .steps { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; padding: 0; margin: 0 0 0.4rem; font-size: 0.85rem; }
-.analysis-progress .steps li { color: var(--color-muted); }
-.analysis-progress .steps li::before { content: "○ "; }
-.analysis-progress .steps li.done::before { content: "✓ "; color: #15803d; }
-.analysis-progress .steps li.current { color: var(--color-text); font-weight: 600; }
-.analysis-progress .steps li.current::before { content: "● "; color: var(--color-primary); }
+.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; padding: 0; margin: 0 0 0.4rem; font-size: 0.85rem; }
+.steps li { color: var(--color-muted); }
+.steps li::before { content: "○ "; }
+.steps li.done::before { content: "✓ "; color: #15803d; }
+.steps li.current { color: var(--color-text); font-weight: 600; }
+.steps li.current::before { content: "● "; color: var(--color-primary); }
 .progress-now { margin: 0.4rem 0 0.2rem; font-size: 0.95rem; }
 
 /* Visor PDF (pdf.js): PDF real + capa de texto + capa de dibujo de hallazgos.
@@ -442,3 +442,14 @@ legend { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.3rem; }
 .ai-details summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
 .side-panel select, .side-panel textarea { width: 100%; box-sizing: border-box; }
 .evidence { max-height: 9rem; overflow: auto; }
+
+/* Asistente de carga de criterios */
+.wizard-steps { margin: 0.3rem 0 0.8rem; }
+.source-picker { margin: 0.4rem 0 0.8rem; flex-wrap: wrap; }
+.source-panel { margin: 0 0 0.8rem; }
+.source-panel textarea { display: block; width: 100%; box-sizing: border-box; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 5px; font: inherit; }
+.file-pick { display: block; margin: 0 0 0.8rem; font-size: 0.85rem; color: var(--color-muted); }
+.notice { padding: 0.5rem 0.8rem; border-radius: 6px; margin: 0.6rem 0; font-size: 0.9rem; }
+.notice.warn { background: #fffbeb; border: 1px solid #f59e0b; color: #78350f; }
+.notice ul { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+.warn { color: #b45309; }

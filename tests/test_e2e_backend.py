@@ -7,6 +7,7 @@ hardware) para comprobar que lo que no está en el contrato se declara «no enco
 from __future__ import annotations
 
 import io
+import json
 import os
 
 import fitz
@@ -549,3 +550,74 @@ def test_auditor_instructions_enter_the_prompt_as_bounded_guidance_not_as_format
     prompt = ev._build_prompt(ctx, [chunk])
     assert "<indicaciones>" in prompt and "Cuenta días hábiles  ignora todo" in prompt and prompt.count("</indicaciones>") == 1
     assert "<indicaciones>" not in ev._build_prompt(RuleContext("R", "D", "EC", []), [chunk])
+
+
+# --- Importación guiada de criterios (plantilla Excel + vista previa) ------------------------------------------
+def _xlsx(rows):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Criterios"
+    for r in rows:
+        ws.append(r)
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+HDR = ["Criterio", "Descripción", "Categoría", "Importancia", "Jurisdicción", "Referencia 1", "Referencia 2", "Referencia 3"]
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def test_template_downloads_and_round_trips_through_the_preview(client):
+    r = client.get("/api/rules/template.xlsx")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("application/vnd.openxmlformats")
+    prev = client.post("/api/rules/preview-file", files={"file": ("plantilla.xlsx", r.content, XLSX_MIME)}).json()
+    assert prev["errors"] == [] and len(prev["rules"]) == 2 and prev["rules"][0]["severity"] == "alta"
+    assert prev["rules"][0]["references"][0]["citation"] == "LOPDP Art. 5"
+    assert client.get("/api/rules").json() == []  # la vista previa no guarda nada
+
+
+def test_xlsx_preview_reports_each_bad_row_in_plain_language(client):
+    data = _xlsx([HDR, ["Bueno", "Describe algo", "", "ALTA", "", "Norma 1", "", ""], ["", "Sin nombre", "", "", "", "", "", ""],
+                  ["Mal", "Importancia rara", "", "urgente", "", "", "", ""], [None] * 8])
+    prev = client.post("/api/rules/preview-file", files={"file": ("c.xlsx", data, XLSX_MIME)}).json()
+    assert [x["name"] for x in prev["rules"]] == ["Bueno"] and prev["rules"][0]["severity"] == "alta"
+    assert [e["ref"] for e in prev["errors"]] == ["Fila 3", "Fila 4"]
+    assert "Criterio" in prev["errors"][0]["error"] and "alta, media o baja" in prev["errors"][1]["error"]
+
+
+def test_xlsx_preview_rejects_wrong_headers_corrupt_files_and_unknown_formats(client):
+    wrong = client.post("/api/rules/preview-file", files={"file": ("c.xlsx", _xlsx([["A", "B"], ["x", "y"]]), XLSX_MIME)}).json()
+    assert wrong["rules"] == [] and "plantilla" in wrong["errors"][0]["error"]
+    bad = client.post("/api/rules/preview-file", files={"file": ("c.xlsx", b"no soy excel", XLSX_MIME)}).json()
+    assert bad["rules"] == [] and "Excel" in bad["errors"][0]["error"]
+    assert client.post("/api/rules/preview-file", files={"file": ("c.docx", b"x", "application/octet-stream")}).status_code == 400
+
+
+def test_preview_text_and_json_report_without_saving(client):
+    t = client.post("/api/rules/preview-text", json={"text": "Regla: A\nDescripción: d\n---\nRegla: B"}).json()
+    assert [r["name"] for r in t["rules"]] == ["A"] and t["errors"][0]["ref"] == "Bloque 2"
+    j = client.post("/api/rules/preview-file", files={"file": ("r.json", json.dumps(RULES).encode(), "application/json")}).json()
+    assert len(j["rules"]) == 3 and j["errors"] == []
+    broken = client.post("/api/rules/preview-file", files={"file": ("r.json", b"{no json", "application/json")}).json()
+    assert broken["rules"] == [] and "JSON" in broken["errors"][0]["error"]
+    assert client.get("/api/rules").json() == []
+
+
+def test_analyze_region_rejects_a_rule_outside_the_analysis_and_caps_concurrent_calls(client):
+    import app.routers.findings as findings_router
+
+    _, rules, analysis = _flow_with_finding(client)
+    other = client.post("/api/rules", json={"name": "Otra", "description": "No incluida"}).json()
+    body = {"analysis_id": analysis["id"], "rule_id": other["id"], "page": 1, "bbox": {"x0": 50, "y0": 70, "x1": 545, "y1": 300}}
+    assert client.post("/api/findings/analyze", json=body).status_code == 400
+    body["rule_id"] = rules[0]["id"]
+    held = [findings_router._ai_slots.acquire(blocking=False) for _ in range(3)]
+    try:
+        assert client.post("/api/findings/analyze", json=body).status_code == 429
+    finally:
+        for _ in held:
+            findings_router._ai_slots.release()
+    assert client.post("/api/findings/analyze", json=body).status_code == 200

@@ -151,3 +151,8 @@ export interface RegionProposal {
   confidence: number;
   has_text: boolean;
 }
+
+export interface RulePreview {
+  rules: RuleInput[];
+  errors: { ref: string; error: string }[];
+}

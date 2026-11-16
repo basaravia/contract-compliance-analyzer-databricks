@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -44,19 +44,31 @@ describe("App", () => {
     expect(screen.queryByLabelText("Contraseña")).not.toBeInTheDocument();
   });
 
-  it("la importación de reglas en texto lista los errores de formato por bloque", async () => {
+  it("cargar criterios: primero se revisa, se ven los errores por fila y solo después se importa", async () => {
+    const calls: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
+      calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url === "/auth/me") return json({ email: "a@b.c", name: "A", auth_mode: "databricks" });
-      if (url === "/api/rules/import-text" && init?.method === "POST")
-        return json({ detail: { message: "Formato inválido", errors: [{ bloque: 2, error: "falta Descripción" }] } }, 422);
+      if (url === "/api/rules/preview-text")
+        return json({
+          rules: [{ name: "Datos personales", description: "d", severity: "alta", jurisdiction: "EC", references: [{ citation: "LOPDP Art. 5" }] }],
+          errors: [{ ref: "Bloque 2", error: "falta Descripción" }],
+        });
+      if (url === "/api/rules/import" && init?.method === "POST") return json([{ id: "r1" }], 201);
       return json([]);
     });
     mount("/reglas");
-    await userEvent.type(await screen.findByLabelText("Texto de reglas"), "Regla: x");
-    await userEvent.click(screen.getByRole("button", { name: "Importar texto" }));
-    await waitFor(() => expect(screen.getByText(/Bloque 2: falta Descripción/)).toBeInTheDocument());
-    expect(screen.getByText("Formato inválido")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Pegar texto" }));
+    await userEvent.type(screen.getByLabelText("Texto de criterios"), "Regla: x");
+    await userEvent.click(screen.getByRole("button", { name: "Revisar antes de cargar" }));
+    expect(await screen.findByText(/Bloque 2:/)).toBeInTheDocument();
+    expect(screen.getByText("falta Descripción")).toBeInTheDocument();
+    expect(screen.getByText("Datos personales")).toBeInTheDocument();
+    expect(calls).not.toContain("POST /api/rules/import"); // aún no se guardó nada
+    await userEvent.click(screen.getByRole("button", { name: "Cargar 1 criterio" }));
+    expect(await screen.findByText(/Se cargaron 1 criterio/)).toBeInTheDocument();
+    expect(calls).toContain("POST /api/rules/import");
   });
 
   it("al subir un PDF muestra el avance y termina con éxito (sin el error de `reset`)", async () => {

@@ -3,6 +3,7 @@ creación de anotaciones nuevas y recálculo de evidencia tras editar el bbox.""
 from __future__ import annotations
 
 import logging
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from app.pdf.coords import BBoxPoints
 from app.schemas import FindingCreate, FindingOut, FindingUpdate, RegionAnalyzeIn, RegionProposalOut
 
 logger = logging.getLogger(__name__)
+_ai_slots = threading.BoundedSemaphore(3)
 router = APIRouter(prefix="/api/findings", tags=["findings"])
 
 
@@ -50,14 +52,21 @@ def analyze_region(
     rule = db.get(Rule, payload.rule_id)
     if document is None or rule is None:
         raise HTTPException(status_code=404, detail="Documento o regla no encontrados")
+    if analysis.rule_ids and rule.id not in analysis.rule_ids:
+        raise HTTPException(status_code=400, detail="Ese criterio no forma parte de este análisis")
     if payload.page > document.page_count:
         raise HTTPException(status_code=400, detail="La página indicada excede el número de páginas del documento")
     b = payload.bbox
+    # Tope de llamadas simultáneas al modelo: protege la cuota y el coste ante clics repetidos.
+    if not _ai_slots.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Hay varios análisis con IA en curso. Espera un momento e inténtalo de nuevo.")
     try:
         ev = evaluate_region(document, rule, payload.page, BBoxPoints(b.x0, b.y0, b.x1, b.y1), payload.instructions)
     except Exception:  # noqa: BLE001 - el detalle (rutas, proveedor) va al log, no al cliente
         logger.exception("Falló el análisis con IA de un recuadro")
         raise HTTPException(status_code=502, detail="No se pudo analizar con IA ahora. Inténtalo de nuevo.") from None
+    finally:
+        _ai_slots.release()
     return RegionProposalOut(
         status=ev.status, justification=ev.justification, evidence_text=ev.evidence_text,
         confidence=ev.confidence, has_text=ev.has_text,

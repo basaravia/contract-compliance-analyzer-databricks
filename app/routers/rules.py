@@ -2,14 +2,18 @@
 formato JSON o texto en lenguaje natural."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Response, UploadFile
+from pydantic import ValidationError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
 from app.models import Rule, RuleReference
 from app.rules.parser import parse_natural_language_rules
-from app.schemas import RuleCreate, RuleImportPayload, RuleOut, RuleUpdate
+from app.rules.xlsx_import import build_template, parse_xlsx
+from app.schemas import RuleCreate, RuleImportPayload, RuleOut, RulePreviewError, RulePreviewOut, RuleUpdate
 
 router = APIRouter(prefix="/api/rules", tags=["rules"])
 
@@ -46,6 +50,52 @@ def _create_rule(db: Session, payload: RuleCreate, created_by: str) -> Rule:
         )
     db.add(rule)
     return rule
+
+
+MAX_IMPORT_FILE_BYTES = 2 * 1024 * 1024
+
+
+@router.get("/template.xlsx")
+def download_template(user: CurrentUser = Depends(get_current_user)) -> Response:
+    """Plantilla de Excel con ejemplos y una hoja de instrucciones."""
+    return Response(
+        content=build_template(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="plantilla-criterios.xlsx"'},
+    )
+
+
+def _preview(rules: list[RuleCreate], errors: list[RulePreviewError]) -> RulePreviewOut:
+    return RulePreviewOut(rules=rules, errors=errors)
+
+
+@router.post("/preview-text", response_model=RulePreviewOut)
+def preview_text(
+    text: str = Body(..., embed=True, max_length=200_000), user: CurrentUser = Depends(get_current_user)
+) -> RulePreviewOut:
+    parsed = parse_natural_language_rules(text)
+    return _preview(parsed.rules, [RulePreviewError(ref=f"Bloque {int(e.block_index) + 1}", error=e.message) for e in parsed.errors])
+
+
+@router.post("/preview-file", response_model=RulePreviewOut)
+async def preview_file(file: UploadFile = File(...), user: CurrentUser = Depends(get_current_user)) -> RulePreviewOut:
+    """Lee un Excel (.xlsx) o un JSON y devuelve la vista previa, sin guardar nada."""
+    data = await file.read(MAX_IMPORT_FILE_BYTES + 1)
+    if len(data) > MAX_IMPORT_FILE_BYTES:
+        raise HTTPException(status_code=413, detail="El archivo supera 2 MB")
+    name = (file.filename or "").lower()
+    if name.endswith(".xlsx"):
+        parsed = parse_xlsx(data)
+        return _preview(parsed.rules, [RulePreviewError(ref=str(e.block_index), error=e.message) for e in parsed.errors])
+    if name.endswith(".json"):
+        try:
+            raw = json.loads(data)
+            payload = RuleImportPayload.model_validate({"rules": raw} if isinstance(raw, list) else raw)
+        except (ValueError, ValidationError) as e:
+            detail = "El archivo no tiene el formato esperado: " + ("JSON inválido." if isinstance(e, json.JSONDecodeError) else "revisa los campos de cada criterio.")
+            return _preview([], [RulePreviewError(ref="Archivo", error=detail)])
+        return _preview(payload.rules, [])
+    raise HTTPException(status_code=400, detail="Formato no admitido: sube un Excel (.xlsx) o un JSON")
 
 
 @router.post("", response_model=RuleOut, status_code=201)

@@ -98,6 +98,18 @@ class RuleImportPayload(BaseModel):
         return v
 
 
+class RulePreviewError(BaseModel):
+    ref: str  # «Fila 4», «Bloque 2», «Archivo»…
+    error: str
+
+
+class RulePreviewOut(BaseModel):
+    """Vista previa de una importación: lo que se cargaría y lo que hay que corregir. No guarda nada."""
+
+    rules: list[RuleCreate]
+    errors: list[RulePreviewError]
+
+
 # ---------------------------------------------------------------------------
 # Análisis / Hallazgos (findings)
 # ---------------------------------------------------------------------------
