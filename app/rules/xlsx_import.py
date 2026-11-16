@@ -5,6 +5,7 @@ Jurisdicción, Referencia 1..3). Ninguna fila mal formada se descarta en silenci
 from __future__ import annotations
 
 import io
+import zipfile
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -13,6 +14,8 @@ from app.rules.parser import ParseError, ParseResult
 from app.schemas import RuleCreate, RuleReferenceIn
 
 MAX_ROWS = 500
+MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024  # el límite de 2 MB del endpoint es del archivo comprimido: se acota también lo expandido
+MAX_ZIP_ENTRIES = 60
 HEADERS = ["Criterio", "Descripción", "Categoría", "Importancia", "Jurisdicción", "Referencia 1", "Referencia 2", "Referencia 3"]
 _SEVERITIES = {"alta": "alta", "media": "media", "baja": "baja"}
 
@@ -64,21 +67,45 @@ def _cell(v: object) -> str:
     return "" if v is None else str(v).strip()
 
 
+def _unsafe_zip(data: bytes) -> bool:
+    """Un .xlsx es un zip: rechaza los que se expanden de forma desproporcionada (zip bomb) o no son zip."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            infos = z.infolist()
+            return len(infos) > MAX_ZIP_ENTRIES or sum(i.file_size for i in infos) > MAX_UNCOMPRESSED_BYTES
+    except zipfile.BadZipFile:
+        return True
+
+
 def parse_xlsx(data: bytes) -> ParseResult:
     result = ParseResult()
+    generic = ParseError("Archivo", "No se pudo leer el archivo. Debe ser un Excel (.xlsx) de tamaño normal, por ejemplo la plantilla descargada.")
+    if _unsafe_zip(data):
+        result.errors.append(generic)
+        return result
     try:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
-    except Exception:  # noqa: BLE001 - zip inválido, archivo corrupto, formato no soportado
-        result.errors.append(ParseError("Archivo", "No se pudo leer el archivo. Debe ser un Excel (.xlsx), por ejemplo la plantilla descargada."))
+    except Exception:  # noqa: BLE001 - archivo corrupto o formato no soportado
+        result.errors.append(generic)
         return result
+    try:
+        _read_rows(wb, result)
+    except Exception:  # noqa: BLE001 - XML mal formado u otro fallo al iterar: error claro, no un 500
+        return ParseResult(errors=[generic])
+    finally:
+        wb.close()
+    return result
+
+
+def _read_rows(wb, result: ParseResult) -> None:
     ws = wb["Criterios"] if "Criterios" in wb.sheetnames else wb.worksheets[0]
-    rows = ws.iter_rows(values_only=True)
+    rows = ws.iter_rows(values_only=True, max_col=len(HEADERS) + 10)  # la dimensión declarada la controla quien sube el archivo
     header = [_cell(c).lower() for c in next(rows, ())]
     index = {name: header.index(name.lower()) for name in HEADERS if name.lower() in header}
     missing = [n for n in ("Criterio", "Descripción") if n not in index]
     if missing:
         result.errors.append(ParseError("Encabezados", f"Falta la columna {' y '.join(missing)}. Usa la plantilla para no equivocarte."))
-        return result
+        return
 
     def get(row: tuple, name: str) -> str:
         i = index.get(name)
@@ -109,4 +136,3 @@ def parse_xlsx(data: bytes) -> ParseResult:
             result.errors.append(ParseError(label, "Algún dato no es válido (revisa la longitud de los textos)."))
     if not result.rules and not result.errors:
         result.errors.append(ParseError("Archivo", "No hay criterios en el archivo: llena al menos una fila debajo de los encabezados."))
-    return result

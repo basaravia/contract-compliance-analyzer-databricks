@@ -621,3 +621,17 @@ def test_analyze_region_rejects_a_rule_outside_the_analysis_and_caps_concurrent_
         for _ in held:
             findings_router._ai_slots.release()
     assert client.post("/api/findings/analyze", json=body).status_code == 200
+
+
+def test_xlsx_zip_bomb_and_garbage_are_rejected_with_a_clear_error_not_a_500(client):
+    import zipfile
+
+    bomb = io.BytesIO()
+    with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("xl/sharedStrings.xml", b"A" * (25 * 1024 * 1024))  # ~25 MB expandidos, casi nada comprimidos
+    assert len(bomb.getvalue()) < 100_000
+    r = client.post("/api/rules/preview-file", files={"file": ("b.xlsx", bomb.getvalue(), XLSX_MIME)})
+    assert r.status_code == 200 and r.json()["rules"] == [] and "tamaño normal" in r.json()["errors"][0]["error"]
+    deep = b"[" * 100000 + b"]" * 100000
+    r = client.post("/api/rules/preview-file", files={"file": ("d.json", deep, "application/json")})
+    assert r.status_code == 200 and r.json()["rules"] == []

@@ -6,6 +6,7 @@ import json
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Response, UploadFile
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import CurrentUser, get_current_user
@@ -85,13 +86,13 @@ async def preview_file(file: UploadFile = File(...), user: CurrentUser = Depends
         raise HTTPException(status_code=413, detail="El archivo supera 2 MB")
     name = (file.filename or "").lower()
     if name.endswith(".xlsx"):
-        parsed = parse_xlsx(data)
+        parsed = await run_in_threadpool(parse_xlsx, data)  # CPU y memoria: fuera del bucle de eventos
         return _preview(parsed.rules, [RulePreviewError(ref=str(e.block_index), error=e.message) for e in parsed.errors])
     if name.endswith(".json"):
         try:
             raw = json.loads(data)
             payload = RuleImportPayload.model_validate({"rules": raw} if isinstance(raw, list) else raw)
-        except (ValueError, ValidationError) as e:
+        except (ValueError, ValidationError, RecursionError) as e:
             detail = "El archivo no tiene el formato esperado: " + ("JSON inválido." if isinstance(e, json.JSONDecodeError) else "revisa los campos de cada criterio.")
             return _preview([], [RulePreviewError(ref="Archivo", error=detail)])
         return _preview(payload.rules, [])
