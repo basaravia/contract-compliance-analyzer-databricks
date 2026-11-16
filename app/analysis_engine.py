@@ -19,6 +19,7 @@ escaneado sin OCR) o no hay chunks relevantes, el resultado se degrada a
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from sqlalchemy.orm import Session
 
@@ -148,19 +149,29 @@ def _build_index(chunks: list[Chunk]) -> tuple[FaissVectorIndex, dict[str, Chunk
     return index, by_id
 
 
-def run_analysis(db: Session, analysis: Analysis, document: Document, rules: list[Rule]) -> None:
-    """Ejecuta el análisis de forma síncrona (adecuado para el tamaño de
-    contrato/reglas del MVP) y persiste un Finding por regla."""
+def _no_report(**_: object) -> None:
+    pass
+
+
+def run_analysis(
+    db: Session, analysis: Analysis, document: Document, rules: list[Rule], report: Callable[..., None] = _no_report
+) -> None:
+    """Ejecuta el análisis y persiste un Finding por regla. `report(phase=, done=, detail=)` avisa del avance
+    (fases de `app.progress.PHASES`); por defecto no hace nada."""
+    report(phase=0, detail=f"{document.page_count} página(s)")
     extraction = extract_and_update_document(db, document)
     chunks = chunk_document(extraction)
 
+    report(phase=1, detail=f"{len(chunks)} fragmento(s) de texto")
     embedder = get_embedding_provider()
     index, chunks_by_id = _build_index(chunks)
     evaluator = get_rule_evaluator()
 
     page_sizes = {p.page: (p.width, p.height) for p in extraction.pages}
 
-    for rule in rules:
+    report(phase=2, done=0)
+    for done, rule in enumerate(rules):
+        report(done=done, detail=rule.name)
         retrieved: list[RetrievedChunk] = _retrieve(rule, embedder, index, chunks_by_id, TOP_K) if chunks else []
 
         rule_ctx = RuleContext(
@@ -202,6 +213,7 @@ def run_analysis(db: Session, analysis: Analysis, document: Document, rules: lis
                     second_pass, scanned = "confirmed_absent", total
                 else:
                     cap = min(total, max(1, settings.full_scan_max_chunks))
+                    report(detail=f"{rule.name} (segunda búsqueda en todo el contrato)")
                     retrieved = _retrieve(rule, embedder, index, chunks_by_id, cap)
                     wide = evaluator.evaluate(rule_ctx, retrieved)
                     scanned = len(retrieved)
@@ -247,6 +259,7 @@ def run_analysis(db: Session, analysis: Analysis, document: Document, rules: lis
             )
         db.add(finding)
 
+    report(phase=3, done=len(rules), detail="")
     analysis.analysis_trace = AnalysisTrace(
         embedding_provider=settings.embedding_provider,
         embedding_model={

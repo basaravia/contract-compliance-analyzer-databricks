@@ -1,4 +1,4 @@
-"""Endpoints de análisis: ejecución (síncrona, adecuada al tamaño del MVP),
+"""Endpoints de análisis: ejecución en segundo plano con progreso consultable,
 consulta y exportación del PDF anotado."""
 from __future__ import annotations
 
@@ -7,8 +7,9 @@ import threading
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+from app import progress
 from app.analysis_engine import run_analysis
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
@@ -16,7 +17,7 @@ from app.models import Analysis, AnalysisStatus, Document, DocumentType, Finding
 from app.output.assemble import build_input
 from app.output.workpaper import build_workpaper
 from app.pdf.annotate import AnnotationSpec, build_annotated_pdf
-from app.schemas import AnalysisCreate, AnalysisDetailOut, AnalysisOut, FindingOut
+from app.schemas import AnalysisCreate, AnalysisDetailOut, AnalysisOut, AnalysisProgressOut, FindingOut
 from app.security import resolve_upload_path
 
 logger = logging.getLogger(__name__)
@@ -34,19 +35,32 @@ def _get_analysis_or_404(db: Session, analysis_id: str) -> Analysis:
     return analysis
 
 
-@router.post("", response_model=AnalysisDetailOut, status_code=201)
+def _spawn(target) -> None:
+    """Lanza el análisis en un hilo propio: la petición responde al instante y el navegador sigue el progreso.
+    Las pruebas lo sustituyen por una llamada directa."""
+    threading.Thread(target=target, name="analisis", daemon=True).start()
+
+
+@router.post("", response_model=AnalysisOut, status_code=202)
 def create_analysis(
     payload: AnalysisCreate, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> Analysis:
     if not _analysis_slot.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Ya hay un análisis en curso. Espera a que termine e inténtalo de nuevo.")
     try:
-        return _create_analysis(payload, db, user)
-    finally:
+        analysis = _create_analysis(payload, db, user)
+    except BaseException:
         _analysis_slot.release()
+        raise
+    # El hilo abre su propia sesión sobre el mismo motor que la petición (en pruebas, la BD temporal).
+    session_factory = sessionmaker(bind=db.get_bind(), autoflush=False, autocommit=False)
+    progress.start(analysis.id, total=len(analysis.rule_ids))
+    _spawn(lambda: _run_in_background(analysis.id, session_factory))
+    db.refresh(analysis)
+    return analysis
 
 
-def _create_analysis(payload: AnalysisCreate, db: Session, user: CurrentUser) -> AnalysisDetailOut:
+def _create_analysis(payload: AnalysisCreate, db: Session, user: CurrentUser) -> Analysis:
     document = db.get(Document, payload.contract_document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Documento de contrato no encontrado")
@@ -73,23 +87,47 @@ def _create_analysis(payload: AnalysisCreate, db: Session, user: CurrentUser) ->
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
+    return analysis
 
+
+def _run_in_background(analysis_id: str, session_factory: sessionmaker) -> None:
+    db = session_factory()
     try:
-        run_analysis(db, analysis, document, rules)
-        analysis.status = AnalysisStatus.done.value
+        analysis = db.get(Analysis, analysis_id)
+        document = db.get(Document, analysis.contract_document_id)
+        by_id = {r.id: r for r in db.query(Rule).filter(Rule.id.in_(analysis.rule_ids)).all()}
+        rules = [by_id[rid] for rid in analysis.rule_ids if rid in by_id]
+        try:
+            run_analysis(db, analysis, document, rules, report=lambda **kw: progress.report(analysis_id, **kw))
+            analysis.status = AnalysisStatus.done.value
+        except Exception:  # noqa: BLE001
+            # El detalle (rutas, trazas) va al log del servidor, no al cliente.
+            logger.exception("Falló el análisis %s", analysis_id)
+            db.rollback()
+            analysis = db.get(Analysis, analysis_id)
+            analysis.status = AnalysisStatus.failed.value
+            analysis.error_message = "El análisis falló por un error interno. Revisa el registro del servidor."
         analysis.finished_at = datetime.utcnow()
-    except Exception:  # noqa: BLE001
-        # El detalle (rutas, trazas) va al log del servidor, no al cliente.
-        logger.exception("Falló el análisis %s", analysis.id)
-        analysis.status = AnalysisStatus.failed.value
-        analysis.error_message = "El análisis falló por un error interno. Revisa el registro del servidor."
-        analysis.finished_at = datetime.utcnow()
-    db.add(analysis)
-    db.commit()
-    db.refresh(analysis)
+        db.commit()
+    except Exception:  # noqa: BLE001 - ni siquiera se pudo marcar el fallo: queda en el log
+        logger.exception("No se pudo cerrar el análisis %s", analysis_id)
+    finally:
+        db.close()
+        progress.finish(analysis_id)
+        _analysis_slot.release()
 
-    findings = db.query(Finding).filter(Finding.analysis_id == analysis.id).all()
-    return _to_detail(analysis, findings)
+
+@router.get("/{analysis_id}/progress", response_model=AnalysisProgressOut)
+def get_analysis_progress(
+    analysis_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+) -> AnalysisProgressOut:
+    analysis = _get_analysis_or_404(db, analysis_id)
+    live = progress.snapshot(analysis_id) if analysis.status == AnalysisStatus.running.value else None
+    status = analysis.status
+    if status == AnalysisStatus.running.value and live is None:
+        # La app se reinició a mitad de análisis: el hilo ya no existe y no va a terminar.
+        status = "interrupted"
+    return AnalysisProgressOut(status=status, error_message=analysis.error_message, live=live)
 
 
 def _to_detail(analysis: Analysis, findings: list[Finding]) -> AnalysisDetailOut:

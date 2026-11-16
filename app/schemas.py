@@ -284,6 +284,23 @@ class FindingOut(BaseModel):
         return v or None
 
 
+class AnalysisLiveProgress(BaseModel):
+    phase: int
+    phases: list[str]
+    done: int
+    total: int
+    detail: str
+    started_ts: float
+    updated_ts: float
+    now_ts: float
+
+
+class AnalysisProgressOut(BaseModel):
+    status: str  # running | done | failed | interrupted
+    error_message: str | None = None
+    live: AnalysisLiveProgress | None = None
+
+
 class AnalysisOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

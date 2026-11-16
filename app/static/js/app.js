@@ -527,7 +527,20 @@ function initAnalysisForm() {
     setMsg(msg, "Ejecutando análisis...", "");
     const resp = await apiJson("/api/analyses", "POST", { contract_document_id: docId, rule_ids: ruleIds });
     if (resp.ok) {
-      const analysis = await resp.json();
+      const { id } = await resp.json();
+      // El análisis corre en segundo plano: se sondea su progreso hasta que termina.
+      let p;
+      do {
+        await new Promise((r) => setTimeout(r, 1500));
+        p = await (await apiFetch(`/api/analyses/${id}/progress`)).json();
+        if (p.live) setMsg(msg, `${p.live.phases[p.live.phase]}… ${p.live.done} de ${p.live.total} regla(s)`, "");
+      } while (p.status === "running");
+      const analysis = await (await apiFetch(`/api/analyses/${id}`)).json();
+      if (p.status !== "done") {
+        setMsg(msg, p.error_message || "El análisis se interrumpió. Vuelve a ejecutarlo.", "error");
+        await loadAnalysesList();
+        return;
+      }
       setMsg(msg, `Análisis completado: ${analysis.findings.length} hallazgo(s).`, "success");
       state.currentAnalysis = analysis;
       renderAnalysisFindings(analysis);

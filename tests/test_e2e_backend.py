@@ -20,6 +20,7 @@ import app.models  # noqa: F401  (registra tablas)
 from app.config import settings
 from app.db import Base, get_db
 from app.main import create_app
+import app.routers.analyses as analyses_router
 
 CONTRACT_PAGES = [
     (
@@ -87,6 +88,7 @@ def client(tmp_path, monkeypatch):
     uploads = tmp_path / "uploads"
     uploads.mkdir()
     monkeypatch.setattr(settings, "upload_dir", str(uploads))
+    monkeypatch.setattr(analyses_router, "_spawn", lambda target: target())  # el análisis corre en línea
     application = create_app()
     application.dependency_overrides[get_db] = override_get_db
     c = TestClient(application)  # sin `with`: no corre el lifespan (que usaría la BD global)
@@ -107,8 +109,8 @@ def run_flow(client, rules=RULES, pages=CONTRACT_PAGES):
     imp = client.post("/api/rules/import", json=rules)
     assert imp.status_code == 201, imp.text
     an = client.post("/api/analyses", json={"contract_document_id": doc["id"]})
-    assert an.status_code == 201, an.text
-    return doc, imp.json(), an.json()
+    assert an.status_code == 202, an.text
+    return doc, imp.json(), client.get(f"/api/analyses/{an.json()['id']}").json()
 
 
 def workpaper(client, analysis_id):
@@ -390,7 +392,7 @@ def test_only_one_analysis_runs_at_a_time(client):
         assert r.status_code == 429 and "en curso" in r.json()["detail"]
     finally:
         analyses_router._analysis_slot.release()
-    assert client.post("/api/analyses", json={"contract_document_id": doc["id"]}).status_code == 201
+    assert client.post("/api/analyses", json={"contract_document_id": doc["id"]}).status_code == 202
 
 
 def test_analysis_failure_does_not_leak_internal_details(client, monkeypatch):
@@ -402,7 +404,8 @@ def test_analysis_failure_does_not_leak_internal_details(client, monkeypatch):
     monkeypatch.setattr(analyses_router, "run_analysis", boom)
     doc = upload_contract(client)
     client.post("/api/rules/import", json=RULES)
-    body = client.post("/api/analyses", json={"contract_document_id": doc["id"]}).json()
+    created = client.post("/api/analyses", json={"contract_document_id": doc["id"]}).json()
+    body = client.get(f"/api/analyses/{created['id']}").json()
     assert body["status"] == "failed"
     assert "/srv/usuario" not in body["error_message"] and "gsk_" not in body["error_message"]
     # y el slot se libera aunque falle
@@ -435,3 +438,42 @@ def test_prompt_marks_contract_text_as_untrusted_data(monkeypatch):
     prompt = GroqRuleEvaluator.__new__(GroqRuleEvaluator)._build_prompt(RuleContext("R", "D", "EC", []), [chunk])
     assert '<fragmento n="0"' in prompt and "TEXTO DEL CONTRATO" in prompt and "IGNÓRALAS" in prompt
     assert prompt.count("</fragmento>") == 1, "el texto del contrato no puede cerrar la etiqueta y escapar del bloque"
+
+
+# --- Progreso del análisis -----------------------------------------------------------------------------
+def test_analysis_reports_each_phase_and_ends_done(client, monkeypatch):
+    import app.routers.analyses as analyses_router
+    from app import progress
+
+    seen = []
+    original = progress.report
+
+    def spy(analysis_id, **kw):
+        original(analysis_id, **kw)
+        seen.append(progress.snapshot(analysis_id))
+
+    monkeypatch.setattr(progress, "report", spy)
+    _, _, analysis = run_flow(client)
+    phases = [s["phase"] for s in seen if s]
+    assert phases[0] == 0 and phases[-1] == 3 and sorted(set(phases)) == [0, 1, 2, 3]
+    assert max(s["done"] for s in seen if s) == 3 and all(s["total"] == 3 for s in seen if s)
+    assert any(s["detail"] == "Proteccion de datos personales" for s in seen if s)
+    final = client.get(f"/api/analyses/{analysis['id']}/progress").json()
+    assert final == {"status": "done", "error_message": None, "live": None}
+    assert not analyses_router._analysis_slot.locked()
+
+
+def test_running_analysis_lost_by_a_restart_is_reported_as_interrupted(client, monkeypatch):
+    import app.routers.analyses as analyses_router
+
+    monkeypatch.setattr(analyses_router, "_spawn", lambda target: None)  # el hilo "muere" con el reinicio
+    doc = upload_contract(client)
+    client.post("/api/rules/import", json=RULES)
+    created = client.post("/api/analyses", json={"contract_document_id": doc["id"]}).json()
+    live = client.get(f"/api/analyses/{created['id']}/progress").json()
+    assert live["status"] == "running" and live["live"]["total"] == 3 and live["live"]["phases"][0] == "Leyendo el contrato"
+    from app import progress
+
+    progress.finish(created["id"])
+    analyses_router._analysis_slot.release()
+    assert client.get(f"/api/analyses/{created['id']}/progress").json()["status"] == "interrupted"
