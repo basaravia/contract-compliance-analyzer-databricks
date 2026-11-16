@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AiAssistant, certainty } from "./AiAssistant";
+import { PdfPageView, usePdfDocument } from "./PdfPageView";
 import { errorMessage } from "../api/client";
 import { useFindingMutations } from "../api/hooks";
 import {
-  DPI,
   HANDLE_SIZE,
+  PX_PER_PT,
   STATUS_COLORS,
   bboxToPx,
   handleAt,
@@ -17,7 +19,7 @@ import {
   type Point,
   type Rect,
 } from "../lib/geometry";
-import { STATUS_LABELS, type AnalysisDetail, type DocumentOut, type Finding, type FindingStatus, type Rule } from "../api/types";
+import { STATUS_LABELS, type AnalysisDetail, type DocumentOut, type Finding, type FindingStatus, type RegionProposal, type Rule } from "../api/types";
 
 type Drag =
   | { type: "create"; start: Point; current: Point }
@@ -59,14 +61,20 @@ function drawHandles(ctx: CanvasRenderingContext2D, r: Rect) {
 export function PdfReview({ analysis, document: doc, rules }: Props) {
   const mut = useFindingMutations(analysis.id);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const { pdf, error: pdfError } = usePdfDocument(`/api/documents/${doc.id}/file`);
+  // Tamaño de la página en la unidad de dibujo (píxeles a 150 DPI): las coordenadas guardadas están en puntos PDF.
+  const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [fitWidth, setFitWidth] = useState(700);
   const dragRef = useRef<Drag | null>(null);
 
   const [page, setPage] = useState(1);
-  const [mode, setMode] = useState<"select" | "create">("select");
+  const [mode, setMode] = useState<"select" | "create" | "text">("select");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pending, setPending] = useState<Rect | null>(null);
   const [newRuleId, setNewRuleId] = useState("");
+  const pendingKey = pending ? `${page}-${Math.round(pending.x0)}-${Math.round(pending.y0)}-${Math.round(pending.x1)}-${Math.round(pending.y1)}-${newRuleId}` : "";
   const [error, setError] = useState("");
 
   const ruleIds = analysis.rule_ids.length ? analysis.rule_ids : rules.map((r) => r.id);
@@ -80,14 +88,12 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
-    const img = imageRef.current;
-    if (!canvas || !img) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const { onPage, selectedId, pending } = live.current;
     const drag = dragRef.current;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
     for (const f of onPage) {
       if (!hasBbox(f)) continue;
       const isSel = f.id === selectedId;
@@ -99,24 +105,25 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
     else if (pending) drawRect(ctx, pending, "#1d4ed8", true, true);
   }, []);
 
-  // Carga la imagen de la página (la rinde el backend a DPI fijo; las coordenadas guardadas están en puntos PDF).
+  const onPageSize = useCallback((w: number, h: number) => setPageSize({ w: Math.round(w * PX_PER_PT), h: Math.round(h * PX_PER_PT) }), []);
   useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      imageRef.current = img;
-      redraw();
-    };
-    img.onerror = () => setError("No se pudo cargar la página del PDF.");
-    img.src = `/api/documents/${doc.id}/pages/${page}.png?dpi=${DPI}`;
-    return () => {
-      img.onload = null;
-      img.onerror = null;
-    };
-  }, [doc.id, page, redraw]);
+    const canvas = canvasRef.current;
+    if (!canvas || !pageSize) return;
+    canvas.width = pageSize.w;
+    canvas.height = pageSize.h;
+    redraw();
+  }, [pageSize, redraw]);
+
+  // «Ajustar al ancho»: el zoom 100 % es la página ocupando todo el espacio disponible.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setFitWidth(Math.max(320, el.clientWidth - 24));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(redraw, [redraw, analysis.findings, selectedId, pending]);
 
@@ -132,7 +139,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!imageRef.current) return;
+    if (mode === "text") return;
     e.currentTarget.setPointerCapture(e.pointerId);
     e.currentTarget.focus();
     const p = pos(e);
@@ -208,48 +215,138 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
   };
 
   const pageCount = doc.page_count;
+  const goTo = (n: number) => {
+    select(null);
+    setPage(Math.min(pageCount, Math.max(1, n)));
+  };
+
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<number[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const search = async () => {
+    if (!pdf || !query.trim()) return;
+    setSearching(true);
+    const q = query.trim().toLowerCase();
+    const found: number[] = [];
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const content = await (await pdf.getPage(n)).getTextContent();
+      if (content.items.map((it) => ("str" in it ? it.str : "")).join(" ").toLowerCase().includes(q)) found.push(n);
+    }
+    setHits(found);
+    setSearching(false);
+    if (found.length && !found.includes(page)) goTo(found[0]);
+  };
+
+  const MODE_HELP: Record<typeof mode, string> = {
+    select: "Haz clic en un recuadro de color para ver el hallazgo. Arrástralo para moverlo o cambia su tamaño por las esquinas.",
+    create: "Dibuja un recuadro sobre el texto que quieres registrar como hallazgo.",
+    text: "Selecciona texto del contrato para copiarlo (Ctrl+C).",
+  };
+  const cssWidth = Math.round(fitWidth * zoom);
 
   return (
     <div>
       <div className="review-toolbar">
-        <button type="button" className="btn btn-secondary" disabled={page <= 1} onClick={() => (select(null), setPage(page - 1))}>
-          ← Página anterior
-        </button>
-        <span>
-          Página {page} / {pageCount}
-        </span>
-        <button type="button" className="btn btn-secondary" disabled={page >= pageCount} onClick={() => (select(null), setPage(page + 1))}>
-          Página siguiente →
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          aria-pressed={mode === "create"}
-          onClick={() => (setMode(mode === "create" ? "select" : "create"), select(null))}
+        <div className="toolbar-group" role="group" aria-label="Página">
+          <button type="button" className="btn btn-secondary btn-small" disabled={page <= 1} onClick={() => goTo(page - 1)} aria-label="Página anterior">
+            ←
+          </button>
+          <label className="inline-field">
+            Página
+            <input
+              type="number"
+              min={1}
+              max={pageCount}
+              value={page}
+              onChange={(e) => e.target.value && goTo(Number(e.target.value))}
+              aria-label="Número de página"
+            />
+            de {pageCount}
+          </label>
+          <button type="button" className="btn btn-secondary btn-small" disabled={page >= pageCount} onClick={() => goTo(page + 1)} aria-label="Página siguiente">
+            →
+          </button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="Zoom">
+          <button type="button" className="btn btn-secondary btn-small" disabled={zoom <= 0.5} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))} aria-label="Alejar">
+            −
+          </button>
+          <span className="zoom-value" aria-live="polite">{Math.round(zoom * 100)} %</span>
+          <button type="button" className="btn btn-secondary btn-small" disabled={zoom >= 3} onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))} aria-label="Acercar">
+            +
+          </button>
+          <button type="button" className="btn btn-secondary btn-small" onClick={() => setZoom(1)}>
+            Ajustar al ancho
+          </button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="Herramienta">
+          {(
+            [
+              ["select", "Ver hallazgos"],
+              ["create", "Marcar zona"],
+              ["text", "Copiar texto"],
+            ] as const
+          ).map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              className={"btn btn-small " + (mode === m ? "btn-primary" : "btn-secondary")}
+              aria-pressed={mode === m}
+              onClick={() => (setMode(m), select(null))}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <form
+          className="toolbar-group"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void search();
+          }}
         >
-          {mode === "create" ? "Modo: crear anotación" : "Modo: seleccionar"}
-        </button>
-        <span className="hint">Arrastra para mover/redimensionar. En modo crear, dibuja un rectángulo nuevo. Supr elimina el seleccionado.</span>
+          <input type="search" placeholder="Buscar en el contrato" aria-label="Buscar en el contrato" value={query} onChange={(e) => (setQuery(e.target.value), setHits(null))} />
+          <button type="submit" className="btn btn-secondary btn-small" disabled={searching || !query.trim() || !pdf}>
+            {searching ? "Buscando…" : "Buscar"}
+          </button>
+        </form>
       </div>
-      {error && <p className="form-msg error" role="alert">{error}</p>}
+      <p className="hint" role="status">
+        {hits
+          ? hits.length
+            ? <>Encontrado en {hits.length === 1 ? "la página" : "las páginas"}:{" "}
+                {hits.map((n) => (
+                  <button key={n} type="button" className="link-btn hit" onClick={() => goTo(n)}>{n}</button>
+                ))}</>
+            : "No se encontró ese texto en el contrato."
+          : MODE_HELP[mode]}
+      </p>
+      {(error || pdfError) && <p className="form-msg error" role="alert">{error || pdfError}</p>}
       <div className="review-body">
-        <div className="canvas-wrap">
-          <canvas
-            ref={canvasRef}
-            className="review-canvas"
-            tabIndex={0}
-            aria-label={`Página ${page} del contrato con hallazgos`}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerCancel={onPointerUp}
-            onKeyDown={(e) => {
-              if ((e.key === "Delete" || e.key === "Backspace") && selected) {
-                e.preventDefault();
-                remove(selected);
-              }
-            }}
-          />
+        <div className="canvas-wrap" ref={wrapRef}>
+          {pdf ? (
+            <PdfPageView pdf={pdf} page={page} cssWidth={cssWidth} onSize={onPageSize} textMode={mode === "text"}>
+              <canvas
+                ref={canvasRef}
+                className={"review-canvas" + (mode === "text" ? " passthrough" : "")}
+                tabIndex={0}
+                aria-label={`Página ${page} del contrato con hallazgos`}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onPointerCancel={onPointerUp}
+                onKeyDown={(e) => {
+                  if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+                    e.preventDefault();
+                    remove(selected);
+                  }
+                }}
+              />
+            </PdfPageView>
+          ) : (
+            !pdfError && <p className="hint on-dark">Abriendo el contrato…</p>
+          )}
         </div>
         <aside className="side-panel">
           <h3>Detalle del hallazgo</h3>
@@ -257,7 +354,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
             <div>
               <h4>Nueva anotación</h4>
               <label>
-                Regla
+                Criterio
                 <select value={newRuleId} onChange={(e) => setNewRuleId(e.target.value)}>
                   {ruleIds.map((id) => (
                     <option key={id} value={id}>
@@ -266,9 +363,27 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
                   ))}
                 </select>
               </label>
+              <AiAssistant
+                key={pendingKey}
+                acceptLabel="Aceptar y guardar el hallazgo"
+                analyze={(instructions) =>
+                  mut.analyze.mutateAsync({ ruleId: newRuleId, page, bbox: pxRectToBboxPt(pending, canvasRef.current!.width, canvasRef.current!.height), instructions })
+                }
+                accept={async (proposal, instructions) => {
+                  const f = await mut.create.mutateAsync({
+                    ruleId: newRuleId,
+                    page,
+                    bbox: pxRectToBboxPt(pending, canvasRef.current!.width, canvasRef.current!.height),
+                    proposal,
+                    instructions,
+                  });
+                  select(f.id);
+                }}
+              />
+              <p className="hint">¿Prefieres registrarlo tú mismo? Guárdalo sin IA y decide el resultado después.</p>
               <button
                 type="button"
-                className="btn btn-primary btn-small"
+                className="btn btn-secondary btn-small"
                 disabled={!newRuleId || mut.create.isPending}
                 onClick={() =>
                   mut.create.mutate(
@@ -277,7 +392,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
                   )
                 }
               >
-                Crear hallazgo
+                Guardar sin IA
               </button>{" "}
               <button type="button" className="btn btn-secondary btn-small" onClick={() => setPending(null)}>
                 Cancelar
@@ -289,6 +404,15 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
               finding={selected}
               ruleName={ruleName(selected.rule_id)}
               busy={mut.setStatus.isPending}
+              analyze={(instructions) =>
+                mut.analyze.mutateAsync({
+                  ruleId: selected.rule_id,
+                  page: selected.page ?? page,
+                  bbox: { x0: selected.bbox_x0!, y0: selected.bbox_y0!, x1: selected.bbox_x1!, y1: selected.bbox_y1! },
+                  instructions,
+                })
+              }
+              apply={(proposal, instructions) => mut.applyProposal.mutateAsync({ id: selected.id, proposal, instructions })}
               onSave={(status) => mut.setStatus.mutate({ id: selected.id, status }, { onError: (err) => setError(errorMessage(err)) })}
               onDelete={() => remove(selected)}
             />
@@ -307,14 +431,16 @@ function FindingDetail(props: {
   busy: boolean;
   onSave: (s: FindingStatus) => void;
   onDelete: () => void;
+  analyze: (instructions: string) => Promise<RegionProposal>;
+  apply: (proposal: RegionProposal, instructions: string) => Promise<unknown>;
 }) {
   const f = props.finding;
   const [status, setStatus] = useState<FindingStatus>(f.status);
   const rows: [string, string][] = [
-    ["Regla", props.ruleName],
+    ["Criterio", props.ruleName],
     ["Estado", STATUS_LABELS[f.status]],
-    ["Severidad", f.severity],
-    ["Confianza", f.confidence.toFixed(2)],
+    ["Importancia", f.severity],
+    ["Nivel de certeza", certainty(f.confidence)],
     ["Manual", f.is_manual ? "Sí" : "No"],
     ["Editado", f.edited ? "Sí" : "No"],
     ["Página", f.page != null ? String(f.page) : "—"],
@@ -379,6 +505,18 @@ function FindingDetail(props: {
               </>
             )}
           </dl>
+        </details>
+      )}
+      {hasBbox(f) && (
+        <details className="ai-details" open={!!f.ai_instructions}>
+          <summary>Reanalizar este recuadro con IA</summary>
+          <AiAssistant
+            key={f.id + f.updated_at}
+            initialInstructions={f.ai_instructions ?? ""}
+            acceptLabel="Aceptar y aplicar al hallazgo"
+            analyze={props.analyze}
+            accept={props.apply}
+          />
         </details>
       )}
       <label>

@@ -275,6 +275,7 @@ class FindingOut(BaseModel):
     is_manual: bool
     edited: bool
     trace: FindingTrace | None = None
+    ai_instructions: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -334,6 +335,9 @@ class FindingUpdate(BaseModel):
     page: int | None = Field(default=None, ge=1)
     bbox: BBox | None = None
     severity: SeverityLiteral | None = None
+    evidence_text: str | None = Field(default=None, max_length=8000)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    ai_instructions: str | None = Field(default=None, max_length=1000)
     recalculate: bool = False
 
 
@@ -347,6 +351,29 @@ class FindingCreate(BaseModel):
     status: FindingStatusLiteral = "requiere_revision"
     justification: str = Field(default="Anotación creada manualmente por el usuario.", max_length=4000)
     severity: SeverityLiteral = "media"
+    evidence_text: str | None = Field(default=None, max_length=8000)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    ai_instructions: str | None = Field(default=None, max_length=1000)
+
+
+class RegionAnalyzeIn(BaseModel):
+    """Pide a la IA evaluar un recuadro del contrato contra una regla, sin guardar nada todavía."""
+
+    analysis_id: str
+    rule_id: str
+    page: int = Field(..., ge=1)
+    bbox: BBox
+    instructions: str = Field(default="", max_length=1000)
+
+
+class RegionProposalOut(BaseModel):
+    """Propuesta de la IA: el auditor decide si la guarda."""
+
+    status: FindingStatusLiteral
+    justification: str
+    evidence_text: str | None = None
+    confidence: float
+    has_text: bool  # False: el recuadro no contiene texto extraíble (zona escaneada o vacía)
 
 
 class UserOut(BaseModel):

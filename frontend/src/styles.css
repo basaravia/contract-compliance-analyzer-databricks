@@ -399,3 +399,46 @@ legend { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.3rem; }
 .analysis-progress .steps li.current { color: var(--color-text); font-weight: 600; }
 .analysis-progress .steps li.current::before { content: "● "; color: var(--color-primary); }
 .progress-now { margin: 0.4rem 0 0.2rem; font-size: 0.95rem; }
+
+/* Visor PDF (pdf.js): PDF real + capa de texto + capa de dibujo de hallazgos.
+   Reglas mínimas de la capa de texto de pdf.js (el CSS completo del visor arrastra decenas de iconos sin uso). */
+.textLayer {
+  position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; transform-origin: 0 0;
+  forced-color-adjust: none; text-size-adjust: none;
+  --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+}
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0; font-size: calc(var(--total-scale-factor) * var(--font-height));
+  --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x));
+}
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { background: rgba(29, 78, 216, 0.3); }
+
+/* Capas del visor */
+.pdf-page { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4); }
+.pdf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pdf-page .textLayer { position: absolute; inset: 0; }
+.pdf-page .textLayer:not(.text-mode) { pointer-events: none; user-select: none; }
+.pdf-page .review-canvas { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
+.pdf-page .review-canvas.passthrough { pointer-events: none; }
+.pdf-page .review-canvas:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
+.toolbar-group { display: flex; align-items: center; gap: 0.35rem; }
+.toolbar-group input[type="search"] { width: 12rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-border); border-radius: 5px; }
+.inline-field { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; margin: 0; }
+.inline-field input { width: 3.6rem; padding: 0.25rem 0.4rem; margin: 0; }
+.zoom-value { min-width: 3rem; text-align: center; font-size: 0.85rem; }
+.hint.on-dark { color: #ddd; padding: 1rem; }
+.link-btn.hit { margin-right: 0.5rem; font-weight: 600; }
+
+/* Asistente de IA */
+.ai-box { margin: 0.6rem 0; padding: 0.6rem 0.75rem; border: 1px solid var(--color-border); border-radius: 6px; background: #f8fafc; }
+.ai-box textarea { display: block; width: 100%; margin: 0.2rem 0 0.5rem; padding: 0.4rem 0.5rem; border: 1px solid var(--color-border); border-radius: 5px; font: inherit; font-size: 0.85rem; resize: vertical; }
+.optional { font-weight: 400; color: var(--color-muted); }
+.proposal { margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px dashed var(--color-border); font-size: 0.9rem; }
+.proposal-title { font-weight: 600; margin: 0 0 0.3rem; }
+.evidence { margin: 0.4rem 0; padding: 0.3rem 0.6rem; border-left: 3px solid var(--color-primary); background: #fff; font-size: 0.85rem; color: var(--color-muted); }
+.ai-details { margin: 0.6rem 0; }
+.ai-details summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; }
+.side-panel select, .side-panel textarea { width: 100%; box-sizing: border-box; }
+.evidence { max-height: 9rem; overflow: auto; }

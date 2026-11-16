@@ -2,15 +2,19 @@
 creación de anotaciones nuevas y recálculo de evidencia tras editar el bbox."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.analysis_engine import recalculate_finding
+from app.analysis_engine import evaluate_region, recalculate_finding
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
 from app.models import Analysis, Document, Finding, Rule
-from app.schemas import FindingCreate, FindingOut, FindingUpdate
+from app.pdf.coords import BBoxPoints
+from app.schemas import FindingCreate, FindingOut, FindingUpdate, RegionAnalyzeIn, RegionProposalOut
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/findings", tags=["findings"])
 
 
@@ -32,6 +36,32 @@ def _get_analysis_and_rule(db: Session, finding: Finding) -> tuple[Analysis, Doc
     if rule is None:
         raise HTTPException(status_code=404, detail="La regla asociada ya no existe")
     return analysis, document, rule
+
+
+@router.post("/analyze", response_model=RegionProposalOut)
+def analyze_region(
+    payload: RegionAnalyzeIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+) -> RegionProposalOut:
+    """Propuesta de la IA para un recuadro (nuevo o ya existente). No guarda nada: el auditor decide."""
+    analysis = db.get(Analysis, payload.analysis_id)
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
+    document = db.get(Document, analysis.contract_document_id)
+    rule = db.get(Rule, payload.rule_id)
+    if document is None or rule is None:
+        raise HTTPException(status_code=404, detail="Documento o regla no encontrados")
+    if payload.page > document.page_count:
+        raise HTTPException(status_code=400, detail="La página indicada excede el número de páginas del documento")
+    b = payload.bbox
+    try:
+        ev = evaluate_region(document, rule, payload.page, BBoxPoints(b.x0, b.y0, b.x1, b.y1), payload.instructions)
+    except Exception:  # noqa: BLE001 - el detalle (rutas, proveedor) va al log, no al cliente
+        logger.exception("Falló el análisis con IA de un recuadro")
+        raise HTTPException(status_code=502, detail="No se pudo analizar con IA ahora. Inténtalo de nuevo.") from None
+    return RegionProposalOut(
+        status=ev.status, justification=ev.justification, evidence_text=ev.evidence_text,
+        confidence=ev.confidence, has_text=ev.has_text,
+    )
 
 
 @router.post("", response_model=FindingOut, status_code=201)
@@ -61,6 +91,9 @@ def create_finding(
         bbox_y1=payload.bbox.y1,
         severity=payload.severity,
         is_manual=True,
+        evidence_text=payload.evidence_text,
+        confidence=payload.confidence,
+        ai_instructions=payload.ai_instructions or None,
         normative_refs=[{"citation": r.citation, "page": r.page} for r in rule.references],
     )
     db.add(finding)

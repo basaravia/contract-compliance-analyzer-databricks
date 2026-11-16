@@ -23,6 +23,7 @@ class RuleContext:
     rule_description: str
     jurisdiction: str
     normative_citations: list[str]
+    extra_instructions: str = ""  # indicaciones del auditor para afinar el criterio (opcional)
 
 
 class RuleEvaluator(ABC):

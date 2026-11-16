@@ -96,6 +96,8 @@ export interface Finding {
   is_manual: boolean;
   edited: boolean;
   trace: FindingTrace | null;
+  ai_instructions: string | null;
+  updated_at: string;
 }
 
 export interface Analysis {
@@ -139,4 +141,13 @@ export interface AnalysisDetail extends Analysis {
 export interface ImportError {
   bloque: number | string;
   error: string;
+}
+
+/** Propuesta de la IA para un recuadro: no se guarda hasta que el auditor la acepta. */
+export interface RegionProposal {
+  status: FindingStatus;
+  justification: string;
+  evidence_text: string | null;
+  confidence: number;
+  has_text: boolean;
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from sqlalchemy.orm import Session
 
@@ -90,6 +91,18 @@ def get_document(
     document_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
 ) -> Document:
     return _get_document_or_404(db, document_id)
+
+
+@router.get("/{document_id}/file")
+def get_document_file(
+    document_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+) -> FileResponse:
+    """El PDF original, para que el visor (pdf.js) lo abra con texto seleccionable y zoom nítido."""
+    document = _get_document_or_404(db, document_id)
+    path = resolve_upload_path(document.stored_filename)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="El archivo ya no está disponible; vuelve a subir el documento")
+    return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": "inline"})
 
 
 @router.get("/{document_id}/pages/{page_number}.png")

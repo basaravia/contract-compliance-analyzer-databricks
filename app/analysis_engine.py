@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -279,10 +280,54 @@ def run_analysis(
     db.commit()
 
 
+@dataclass
+class RegionEvaluation:
+    status: str
+    justification: str
+    evidence_text: str | None
+    confidence: float
+    has_text: bool
+
+
+def evaluate_region(
+    document: Document, rule: Rule, page: int, bbox: BBoxPoints, instructions: str = ""
+) -> RegionEvaluation:
+    """Evalúa con el modelo SOLO el texto nativo contenido en el recuadro: nunca inventa evidencia.
+    No toca la base de datos; quien llama decide si guarda el resultado."""
+    path = resolve_upload_path(document.stored_filename)
+    text = extract_text_in_bbox(str(path), page, bbox)
+    if not text:
+        return RegionEvaluation(
+            status="requiere_revision",
+            justification=(
+                "El área seleccionada no contiene texto extraíble (posible zona escaneada, "
+                "imagen o selección vacía). Requiere revisión manual."
+            ),
+            evidence_text=None,
+            confidence=0.0,
+            has_text=False,
+        )
+    chunk = RetrievedChunk(chunk_id=f"manual-{page}", page=page, text=text, bbox=bbox, score=1.0)
+    rule_ctx = RuleContext(
+        rule_name=rule.name,
+        rule_description=rule.description,
+        jurisdiction=rule.jurisdiction,
+        normative_citations=[r.citation for r in rule.references],
+        extra_instructions=instructions,
+    )
+    result = get_rule_evaluator().evaluate(rule_ctx, [chunk])
+    return RegionEvaluation(
+        status=result.status,
+        justification=result.justification,
+        evidence_text=result.evidence_text or text[:2000],
+        confidence=result.confidence,
+        has_text=True,
+    )
+
+
 def recalculate_finding(db: Session, finding: Finding, document: Document, rule: Rule) -> None:
-    """Recalcula justification/evidence_text/status a partir del bbox actual
-    del finding (tras una edición manual). Usa exclusivamente el texto nativo
-    contenido en ese bbox: nunca inventa evidencia."""
+    """Recalcula justification/evidence_text/status a partir del bbox actual del finding (tras una edición
+    manual), con las indicaciones del auditor si las hubo. Usa exclusivamente el texto nativo de ese bbox."""
     if finding.page is None or None in (finding.bbox_x0, finding.bbox_y0, finding.bbox_x1, finding.bbox_y1):
         finding.status = "requiere_revision"
         finding.justification = "No hay página/bbox definidos para recalcular la evidencia."
@@ -290,30 +335,9 @@ def recalculate_finding(db: Session, finding: Finding, document: Document, rule:
         finding.confidence = 0.0
         return
 
-    path = resolve_upload_path(document.stored_filename)
     bbox = BBoxPoints(finding.bbox_x0, finding.bbox_y0, finding.bbox_x1, finding.bbox_y1)
-    text = extract_text_in_bbox(str(path), finding.page, bbox)
-
-    if not text:
-        finding.evidence_text = None
-        finding.justification = (
-            "El área seleccionada no contiene texto extraíble (posible zona escaneada, "
-            "imagen o selección vacía). Requiere revisión manual."
-        )
-        finding.status = "requiere_revision"
-        finding.confidence = 0.0
-        return
-
-    evaluator = get_rule_evaluator()
-    chunk = RetrievedChunk(chunk_id=f"manual-edit-{finding.id}", page=finding.page, text=text, bbox=bbox, score=1.0)
-    rule_ctx = RuleContext(
-        rule_name=rule.name,
-        rule_description=rule.description,
-        jurisdiction=rule.jurisdiction,
-        normative_citations=[r.citation for r in rule.references],
-    )
-    result = evaluator.evaluate(rule_ctx, [chunk])
-    finding.status = result.status
-    finding.justification = result.justification
-    finding.evidence_text = result.evidence_text or text[:2000]
-    finding.confidence = result.confidence
+    ev = evaluate_region(document, rule, finding.page, bbox, finding.ai_instructions or "")
+    finding.status = ev.status
+    finding.justification = ev.justification
+    finding.evidence_text = ev.evidence_text
+    finding.confidence = ev.confidence

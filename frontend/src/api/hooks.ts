@@ -9,6 +9,7 @@ import type {
   DocumentOut,
   Finding,
   FindingStatus,
+  RegionProposal,
   Rule,
   RuleInput,
   User,
@@ -96,12 +97,45 @@ export function useFindingMutations(analysisId: string) {
       onSuccess: refresh,
     }),
     create: useMutation({
-      mutationFn: (v: { ruleId: string; page: number; bbox: BBox }) =>
+      mutationFn: (v: { ruleId: string; page: number; bbox: BBox; proposal?: RegionProposal; instructions?: string }) =>
         apiJson<Finding>("/api/findings", "POST", {
           analysis_id: analysisId,
           rule_id: v.ruleId,
           page: v.page,
           bbox: v.bbox,
+          // Con propuesta de la IA aceptada se guarda su resultado; sin ella queda «Requiere revisión».
+          ...(v.proposal
+            ? {
+                status: v.proposal.status,
+                justification: v.proposal.justification,
+                evidence_text: v.proposal.evidence_text,
+                confidence: v.proposal.confidence,
+              }
+            : {}),
+          ai_instructions: v.instructions?.trim() || null,
+        }),
+      onSuccess: refresh,
+    }),
+    /** Pide la propuesta de la IA para un recuadro (nuevo o existente) sin guardar nada. */
+    analyze: useMutation({
+      mutationFn: (v: { ruleId: string; page: number; bbox: BBox; instructions: string }) =>
+        apiJson<RegionProposal>("/api/findings/analyze", "POST", {
+          analysis_id: analysisId,
+          rule_id: v.ruleId,
+          page: v.page,
+          bbox: v.bbox,
+          instructions: v.instructions.trim(),
+        }),
+    }),
+    applyProposal: useMutation({
+      mutationFn: (v: { id: string; proposal: RegionProposal; instructions: string }) =>
+        apiJson<Finding>(`/api/findings/${v.id}`, "PATCH", {
+          status: v.proposal.status,
+          justification: v.proposal.justification,
+          evidence_text: v.proposal.evidence_text,
+          confidence: v.proposal.confidence,
+          ai_instructions: v.instructions.trim() || null,
+          recalculate: false,
         }),
       onSuccess: refresh,
     }),

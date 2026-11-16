@@ -40,6 +40,8 @@ def init_db() -> None:
             finding_columns = {column["name"] for column in inspect(engine).get_columns("findings")}
             if "trace" not in finding_columns:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN trace JSON"))
+            if "ai_instructions" not in finding_columns:
+                connection.execute(text("ALTER TABLE findings ADD COLUMN ai_instructions TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:
