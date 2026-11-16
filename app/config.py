@@ -44,9 +44,6 @@ class Settings(BaseSettings):
     groq_llm_model: str = ""
     groq_timeout_s: float = 60.0
 
-    # Databricks Apps (AUTH_MODE=databricks / LLM_PROVIDER=databricks). La plataforma inyecta DATABRICKS_HOST,
-    # DATABRICKS_CLIENT_ID/SECRET (principal de servicio de la app) y DATABRICKS_APP_PORT.
-    databricks_host: str = ""
     # Azure AI Foundry (Azure OpenAI). El token es secreto: en Databricks Apps llega por `valueFrom`.
     foundry_ai_endpoint: str = ""
     foundry_ai_api_version: str = ""
@@ -56,15 +53,6 @@ class Settings(BaseSettings):
     foundry_embed_dim: int = 3072  # text-embedding-3-large
     foundry_omit_temperature: bool = False  # GPT-5.x (razonamiento) solo acepta la temperatura de fábrica
     foundry_timeout_s: float = 60.0
-    # Ruta de un Volume de Unity Catalog (/Volumes/<catalogo>/<esquema>/<volumen>/...) donde se guarda la copia
-    # durable de los PDF. El disco del contenedor es efímero: sin esto los PDF se pierden al reiniciar la app.
-    upload_volume_path: str = ""
-    # Lakebase (Postgres gestionado). Los inyecta el recurso `database` de la app; la contraseña es un token OAuth.
-    pghost: str = ""
-    pgport: int = 5432
-    pgdatabase: str = "databricks_postgres"
-    pguser: str = ""
-    pgsslmode: str = "require"
 
     # Segunda pasada antes de declarar «no encontrado» (ver docs/arquitectura/03)
     second_pass_enabled: bool = True
@@ -74,10 +62,6 @@ class Settings(BaseSettings):
     vector_index_provider: str = "faiss"
 
     default_jurisdiction: str = "EC"
-
-    @property
-    def use_lakebase(self) -> bool:
-        return bool(self.pghost)
 
     @property
     def max_upload_bytes(self) -> int:

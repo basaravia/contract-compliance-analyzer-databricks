@@ -14,10 +14,6 @@ itsdangerous>=2.2
 pyjwt[crypto]>=2.8,<3.0
 openpyxl>=3.1,<4.0   # papel de trabajo en Excel (cero tokens)
 
-# --- Databricks Apps ---
-databricks-sdk>=0.40          # auth del principal de servicio, Volumes de Unity Catalog, tokens OAuth
-psycopg[binary]>=3.2,<4.0     # Lakebase (Postgres gestionado)
-
 # --- Opcionales (no requeridos para arrancar el MVP) ---
 # pytesseract y Pillow habilitan OCR real para PDFs escaneados.
 # Sin ellos, las páginas escaneadas se marcan como "scanned_no_ocr"

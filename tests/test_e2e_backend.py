@@ -422,7 +422,7 @@ def test_upload_extraction_runs_in_a_thread_not_in_the_event_loop(client, monkey
 
     monkeypatch.setattr(documents_router, "run_in_threadpool", spy)
     upload_contract(client)
-    assert called == ["get_page_count", "push", "extract_and_update_document"]
+    assert called == ["get_page_count", "extract_and_update_document"]
 
 
 def test_prompt_marks_contract_text_as_untrusted_data(monkeypatch):

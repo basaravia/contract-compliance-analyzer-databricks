@@ -158,17 +158,6 @@ vuelva a extraer el texto bajo el nuevo recuadro y reevalúe realmente la regla
 con esa evidencia (no reutiliza el resultado anterior); si el área queda vacía
 o es solo imagen sin OCR, el hallazgo se marca `requiere_revision`.
 
-## Docker
-
-```bash
-cp .env.example .env   # ajusta según necesites
-docker compose up --build
-```
-
-Monta `./data` como volumen para persistir `data/app.db` y `data/uploads` fuera
-del contenedor. No se incluyen secretos en la imagen; las variables de entorno
-se leen de `.env` (fuera del control de versiones).
-
 ## Limitaciones conocidas del MVP
 
 - El análisis se ejecuta de forma **síncrona** dentro de la petición HTTP

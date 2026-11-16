@@ -41,7 +41,7 @@ def new_stored_filename(original_filename: str) -> str:
 
 def upload_target_path(stored_filename: str) -> Path:
     """Ruta local de un nombre de archivo almacenado, rechazando cualquier intento de escapar de UPLOAD_DIR
-    (path traversal). No toca el disco ni el Volume: sirve para escribir y para borrar."""
+    (path traversal). No toca el disco: sirve para escribir y para borrar."""
     base = Path(settings.upload_dir).resolve()
     candidate = (base / stored_filename).resolve()
     if base not in candidate.parents and candidate != base:
@@ -50,13 +50,8 @@ def upload_target_path(stored_filename: str) -> Path:
 
 
 def resolve_upload_path(stored_filename: str) -> Path:
-    """Ruta local de un PDF ya subido, para LEERLO. El disco local es una caché: si el archivo no está
-    (contenedor reiniciado) se recupera del Volume de Unity Catalog antes de devolver la ruta."""
-    from app import storage
-
-    path = upload_target_path(stored_filename)
-    storage.ensure_local(stored_filename, path)
-    return path
+    """Ruta local de un PDF ya subido, para LEERLO."""
+    return upload_target_path(stored_filename)
 
 
 async def validate_and_store_pdf(upload: UploadFile) -> tuple[str, str, int]:

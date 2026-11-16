@@ -4,35 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, inspect, text
-from sqlalchemy.engine import URL, Engine
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
 
 def _build_engine() -> Engine:
-    if settings.use_lakebase:
-        # Lakebase (Postgres gestionado). El recurso `database` de la app inyecta PGHOST/PGUSER/...; la
-        # contraseña es un token OAuth del principal de servicio que caduca (~1 h): se pide en cada conexión
-        # nueva y el pool recicla conexiones antes de que el token venza.
-        url = URL.create(
-            "postgresql+psycopg",
-            username=settings.pguser,
-            host=settings.pghost,
-            port=settings.pgport,
-            database=settings.pgdatabase,
-            query={"sslmode": settings.pgsslmode},
-        )
-        eng = create_engine(url, pool_pre_ping=True, pool_recycle=2700, pool_size=5, max_overflow=5)
-
-        @event.listens_for(eng, "do_connect")
-        def _inject_token(dialect, conn_rec, cargs, cparams):  # noqa: ARG001
-            from app.databricks_client import oauth_token
-
-            cparams["password"] = oauth_token()
-
-        return eng
     connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
     return create_engine(settings.database_url, connect_args=connect_args)
 

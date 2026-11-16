@@ -34,7 +34,6 @@
 | C5 | Los textos del contrato salen a Groq (reglas + hasta 5 fragmentos por regla) | Abierto: confirmar que está permitido con contratos reales |
 | C6 | `datetime.utcnow()` y `import fitz` obsoletos | Abierto, menor |
 | C7 | Tesseract no instalado: PDFs escaneados quedan en V | Abierto |
-| C8 | Docker no probado (no se construyó la imagen por memoria) | Abierto |
 
 ## D. Cambios de esta rama (resumen)
 Segunda pasada en `analysis_engine.py` (+ campos en `FindingTrace`, ajustes `SECOND_PASS_ENABLED` / `FULL_SCAN_MAX_CHUNKS`) · `app/output/{workpaper,assemble}.py` (nuevo) · `GET …/papel-trabajo.xlsx` · trazas del motor ·

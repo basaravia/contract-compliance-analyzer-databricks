@@ -1,5 +1,5 @@
 # Databricks Apps — manifiesto de ejecución.
-# Los valores con `valueFrom` salen de los *recursos* declarados en databricks.yml (la app nunca ve tokens
+# Los valores con `valueFrom` salen de los *recursos* de la app (la app nunca ve tokens
 # ni claves: se autentica como su principal de servicio). DATABRICKS_HOST, DATABRICKS_CLIENT_ID/SECRET y
 # DATABRICKS_APP_PORT los inyecta la plataforma.
 # Mismo arranque que el comparador, probado en este workspace: el `command` no pasa por shell (sin --port $PORT) y
@@ -15,7 +15,7 @@ env:
 
   # LLM: Azure AI Foundry, variables FOUNDRY_AI_*. Los REEMPLAZAR-… se cambian por los datos
   # reales del workspace; el repo NUNCA lleva endpoints ni tokens reales. El token llega por `valueFrom`
-  # (recurso de tipo secreto de la app declarado en databricks.yml).
+  # (recurso de tipo secreto de la app).
   - name: LLM_PROVIDER
     value: foundry
   - name: FOUNDRY_AI_ENDPOINT
@@ -35,8 +35,7 @@ env:
     value: "REEMPLAZAR-deployment-de-embeddings"
 
   # Sin Lakebase ni Volume: SQLite y PDF en el disco local del contenedor (/tmp). Es EFÍMERO: los datos
-  # se pierden al reiniciar o redesplegar la app (reglas, análisis, PDF). Para persistir, ver
-  # deploy/databricks/README.md ("Persistencia opcional").
+  # se pierden al reiniciar o redesplegar la app (reglas, análisis, PDF).
   - name: DATABASE_URL
     value: sqlite:////tmp/ccap/app.db
   - name: UPLOAD_DIR

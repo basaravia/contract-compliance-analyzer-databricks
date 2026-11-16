@@ -53,4 +53,4 @@ Se sabotearon dos decisiones a propósito y se comprobó que las pruebas fallan;
 - Contratos largos (decenas de páginas) ni rendimiento: el análisis es síncrono.
 - PDFs escaneados **con** OCR (Tesseract no está instalado en el entorno de pruebas).
 - Apertura del `.xlsx` en Excel/LibreOffice (se valida con openpyxl; ver doc 07).
-- Docker (`docker compose up`) y la SPA en un navegador (solo se verifica por HTTP).
+- La SPA en un navegador (solo se verifica por HTTP).

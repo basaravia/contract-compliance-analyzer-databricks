@@ -87,7 +87,7 @@ sequenceDiagram
 ## Stack
 | Capa | Elección | Notas |
 |---|---|---|
-| Runtime | Python 3.13 en desarrollo (el proyecto pide ≥ 3.12) | Docker `python:3.12-slim` |
+| Runtime | Python 3.13 en desarrollo (el proyecto pide ≥ 3.12) | Databricks Apps (Python 3.11) |
 | API | fastapi, uvicorn (1 worker), pydantic v2 | Estado en BD, no en memoria |
 | PDF | PyMuPDF | texto, bbox, render, PDF anotado |
 | Vectores | faiss-cpu + numpy | `IndexFlatIP` sobre vectores normalizados ≈ coseno |

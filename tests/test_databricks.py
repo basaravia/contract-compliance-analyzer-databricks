@@ -1,6 +1,6 @@
-"""Despliegue en Databricks Apps: identidad del proxy, SPA, Volume, Lakebase y Model Serving.
+"""Despliegue en Databricks Apps: identidad del proxy, SPA y Azure AI Foundry.
 
-Nada de esto toca red ni un workspace real: el SDK se sustituye por dobles."""
+Nada de esto toca red ni un workspace real: los servicios externos se sustituyen por dobles."""
 from __future__ import annotations
 
 import io
@@ -13,9 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.databricks_client as dbx_client
 import app.main as main_module
-from app import storage
 from app.config import settings
 from app.db import Base, get_db
 from app.llm.base import RetrievedChunk, RuleContext
@@ -103,92 +101,6 @@ def test_spa_is_served_with_client_side_routes_but_api_404s_stay_404(tmp_path, m
     assert c.get("/api/no-existe", headers=IDENTITY).status_code == 404
     assert c.get("/../etc/passwd").status_code in (404, 200) and "root:" not in c.get("/../etc/passwd").text
     assert c.get("/healthz").json() == {"status": "ok"}
-
-
-# --- Volume de Unity Catalog -----------------------------------------------------------------------
-class FakeFiles:
-    def __init__(self):
-        self.objects: dict[str, bytes] = {}
-
-    def upload(self, path, contents, overwrite=False):
-        self.objects[path] = contents.read()
-
-    def download(self, path):
-        if path not in self.objects:
-            raise FileNotFoundError(path)
-        return types.SimpleNamespace(contents=io.BytesIO(self.objects[path]))
-
-    def delete(self, path):
-        self.objects.pop(path, None)
-
-
-@pytest.fixture()
-def volume(monkeypatch):
-    fake = types.SimpleNamespace(files=FakeFiles())
-    monkeypatch.setattr(settings, "upload_volume_path", "/Volumes/cat/sch/vol/uploads/")
-    monkeypatch.setattr(dbx_client, "_client", fake)
-    return fake.files
-
-
-def test_storage_roundtrip_restores_a_pdf_lost_with_the_container_disk(volume, tmp_path):
-    local = tmp_path / "abc.pdf"
-    local.write_bytes(b"%PDF-1.7 contenido")
-    storage.push("abc.pdf", local)
-    assert volume.objects["/Volumes/cat/sch/vol/uploads/abc.pdf"] == b"%PDF-1.7 contenido"
-
-    local.unlink()  # el contenedor se reinició
-    storage.ensure_local("abc.pdf", local)
-    assert local.read_bytes() == b"%PDF-1.7 contenido"
-
-    storage.remove("abc.pdf")
-    assert volume.objects == {}
-
-
-def test_storage_accepts_three_part_volume_name(monkeypatch):
-    monkeypatch.setattr(settings, "upload_volume_path", "main.contratos.pdfs")
-    assert storage._remote("a.pdf") == "/Volumes/main/contratos/pdfs/a.pdf"
-
-
-def test_storage_rejects_names_with_path_separators(volume, tmp_path):
-    with pytest.raises(ValueError):
-        storage.push("../escape.pdf", tmp_path / "x")
-
-
-def test_storage_is_a_noop_without_volume(monkeypatch, tmp_path):
-    monkeypatch.setattr(settings, "upload_volume_path", "")
-    local = tmp_path / "a.pdf"
-    storage.ensure_local("a.pdf", local)  # no descarga ni lanza
-    assert not local.exists()
-
-
-def test_storage_missing_in_volume_is_logged_not_raised(volume, tmp_path):
-    storage.ensure_local("no-esta.pdf", tmp_path / "no-esta.pdf")
-    assert not (tmp_path / "no-esta.pdf").exists()
-
-
-# --- Lakebase ----------------------------------------------------------------------------------------
-def test_lakebase_engine_uses_oauth_token_as_password(monkeypatch):
-    import app.db as db_module
-
-    for k, v in dict(pghost="inst.database.cloud.databricks.com", pguser="sp-uuid", pgdatabase="contratos").items():
-        monkeypatch.setattr(settings, k, v)
-    monkeypatch.setattr(dbx_client, "oauth_token", lambda: "tok-123")
-    eng = db_module._build_engine()
-    try:
-        assert eng.url.drivername == "postgresql+psycopg"
-        assert (eng.url.host, eng.url.username, eng.url.database) == ("inst.database.cloud.databricks.com", "sp-uuid", "contratos")
-        assert eng.url.query["sslmode"] == "require" and eng.url.password is None  # nunca en la URL
-        seen: dict = {}
-
-        def fake_connect(*args, **kwargs):
-            seen.update(kwargs)
-            return object()
-
-        monkeypatch.setattr(eng.dialect, "connect", fake_connect)
-        eng.pool._creator(None)  # abre una conexión nueva: dispara el evento do_connect
-        assert seen["password"] == "tok-123"
-    finally:
-        eng.dispose()
 
 
 # --- Azure AI Foundry ----------------------------------------------------------------------------------

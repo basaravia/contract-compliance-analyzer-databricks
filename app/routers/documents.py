@@ -15,7 +15,6 @@ from app.models import Analysis, Document
 from app.pdf.extract import get_page_count
 from app.pdf.render import render_page_png
 from app.schemas import DocumentOut
-from app import storage
 from app.security import resolve_upload_path, upload_target_path, validate_and_store_pdf
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -45,12 +44,6 @@ async def upload_document(
     except Exception as e:
         path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="El PDF está corrupto o no se pudo leer") from e
-
-    try:
-        await run_in_threadpool(storage.push, stored_name, path)
-    except Exception as e:
-        path.unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail="No se pudo guardar el documento en el almacenamiento") from e
 
     document = Document(
         doc_type=doc_type,
@@ -129,5 +122,4 @@ def delete_document(
     db.delete(document)
     db.commit()
     path.unlink(missing_ok=True)
-    storage.remove(document.stored_filename)
     return Response(status_code=204, response_model=None)
