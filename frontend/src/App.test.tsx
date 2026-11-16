@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,5 +57,60 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Importar texto" }));
     await waitFor(() => expect(screen.getByText(/Bloque 2: falta Descripción/)).toBeInTheDocument());
     expect(screen.getByText("Formato inválido")).toBeInTheDocument();
+  });
+
+  it("al subir un PDF muestra el avance y termina con éxito (sin el error de `reset`)", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+      String(input) === "/auth/me" ? json({ email: "a@b.c", name: "A", auth_mode: "databricks" }) : json([]),
+    );
+    class FakeXHR {
+      status = 0;
+      responseText = "";
+      upload: { onprogress: ((ev: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      withCredentials = false;
+      open() {}
+      setRequestHeader() {}
+      send() {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 50, total: 100 });
+        setTimeout(() => {
+          this.status = 201;
+          this.responseText = JSON.stringify({ id: "d1", title: "Contrato X", original_filename: "x.pdf", page_count: 3 });
+          this.onload?.();
+        }, 0);
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXHR);
+    mount();
+    const file = new File(["%PDF-1.4"], "x.pdf", { type: "application/pdf" });
+    await userEvent.upload(await screen.findByLabelText("Archivo PDF"), file);
+    // jsdom no da por válido un input de archivo `required` aunque tenga archivo: se envía el formulario directamente.
+    fireEvent.submit(screen.getByRole("button", { name: "Subir" }).closest("form")!);
+    expect(await screen.findByText("Listo: «Contrato X» (3 páginas).")).toBeInTheDocument();
+    expect(screen.queryByText(/reset/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("un análisis en curso muestra la etapa, el criterio actual y el avance", async () => {
+    const now = 1_000_000;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/auth/me") return json({ email: "a@b.c", name: "A", auth_mode: "databricks" });
+      if (url === "/api/analyses/a1")
+        return json({ id: "a1", contract_document_id: "d1", status: "running", error_message: null, created_by: null,
+          created_at: "2026-01-01T00:00:00", finished_at: null, rule_ids: ["r1", "r2", "r3"], findings: [] });
+      if (url === "/api/analyses/a1/progress")
+        return json({ status: "running", error_message: null, live: {
+          phase: 2, phases: ["Leyendo el contrato", "Preparando la búsqueda", "Evaluando criterios", "Guardando resultados"],
+          done: 1, total: 3, detail: "Plazo de entrega", started_ts: now - 30, updated_ts: now - 2, now_ts: now } });
+      return json([]);
+    });
+    mount("/analisis/a1");
+    expect(await screen.findByText("Evaluando criterio 2 de 3")).toBeInTheDocument();
+    expect(screen.getByText(/Plazo de entrega/)).toBeInTheDocument();
+    expect(screen.getByText("Evaluando criterios")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("progressbar", { name: "Avance del análisis" })).toHaveAttribute("aria-valuenow", "38");
+    expect(screen.getByText(/Falta aproximadamente/)).toBeInTheDocument();
   });
 });

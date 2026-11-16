@@ -380,3 +380,22 @@ legend { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.3rem; }
 .mt { margin-top: 0.75rem; }
 .ref-list { margin: 0; padding-left: 1rem; }
 .link-btn { background: none; border: 0; color: var(--color-primary); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+
+/* Avance: subida y análisis */
+.progress { height: 0.5rem; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin: 0.6rem 0 0.3rem; }
+.progress-fill { height: 100%; background: var(--color-primary); border-radius: 999px; transition: width 0.4s ease; }
+.progress-fill.indeterminate { width: 35%; animation: progress-slide 1.2s ease-in-out infinite; }
+@keyframes progress-slide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+  .progress-fill.indeterminate { animation: none; width: 100%; opacity: 0.4; }
+}
+.upload-progress { margin-top: 0.5rem; }
+
+.analysis-progress .steps { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; padding: 0; margin: 0 0 0.4rem; font-size: 0.85rem; }
+.analysis-progress .steps li { color: var(--color-muted); }
+.analysis-progress .steps li::before { content: "○ "; }
+.analysis-progress .steps li.done::before { content: "✓ "; color: #15803d; }
+.analysis-progress .steps li.current { color: var(--color-text); font-weight: 600; }
+.analysis-progress .steps li.current::before { content: "● "; color: var(--color-primary); }
+.progress-now { margin: 0.4rem 0 0.2rem; font-size: 0.95rem; }

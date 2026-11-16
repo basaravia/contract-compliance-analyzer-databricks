@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { ApiError, errorMessage } from "../api/client";
 import { useCreateRule, useDeleteRule, useImportRules, useRules, useUpdateRule } from "../api/hooks";
 import type { Rule, Severity } from "../api/types";
@@ -81,7 +81,7 @@ function NewRuleForm() {
         </div>
         <ReferenceFields value={refs} onChange={setRefs} />
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-          Crear regla
+          {create.isPending ? "Guardando…" : "Crear regla"}
         </button>
         <p className={"form-msg " + msg.kind} role="status">
           {msg.text}
@@ -98,6 +98,7 @@ function ImportCard() {
   const [formatErrors, setFormatErrors] = useState<{ bloque: number | string; error: string }[]>([]);
   const [jsonMsg, setJsonMsg] = useState<Msg>({ text: "", kind: "" });
   const [jsonFile, setJsonFile] = useState<File | null>(null);
+  const jsonFormRef = useRef<HTMLFormElement>(null); // tras un `await`, `e.currentTarget` ya es null
 
   const importText = async (e: FormEvent) => {
     e.preventDefault();
@@ -125,7 +126,7 @@ function ImportCard() {
       await imp.mutateAsync({ kind: "json", payload: Array.isArray(parsed) ? { rules: parsed } : parsed });
       setJsonMsg({ text: "Reglas importadas correctamente.", kind: "success" });
       setJsonFile(null);
-      e.currentTarget.reset();
+      jsonFormRef.current?.reset();
     } catch (err) {
       setJsonMsg({ text: errorMessage(err), kind: "error" });
     }
@@ -147,7 +148,7 @@ function ImportCard() {
       <form onSubmit={importText}>
         <textarea rows={10} placeholder="Pega aquí el texto con el formato de arriba…" aria-label="Texto de reglas" value={text} onChange={(e) => setText(e.target.value)} />
         <button type="submit" className="btn btn-primary" disabled={imp.isPending || !text.trim()}>
-          Importar texto
+          {imp.isPending ? "Importando…" : "Importar texto"}
         </button>
         <p className={"form-msg " + textMsg.kind} role="status">
           {textMsg.text}
@@ -161,10 +162,10 @@ function ImportCard() {
         </ul>
       </form>
       <h3>Importar JSON</h3>
-      <form onSubmit={importJson}>
+      <form ref={jsonFormRef} onSubmit={importJson}>
         <input type="file" accept="application/json" aria-label="Archivo JSON" onChange={(e) => setJsonFile(e.target.files?.[0] ?? null)} />
-        <button type="submit" className="btn btn-secondary">
-          Importar JSON
+        <button type="submit" className="btn btn-secondary" disabled={imp.isPending}>
+          {imp.isPending ? "Importando…" : "Importar JSON"}
         </button>
         <p className={"form-msg " + jsonMsg.kind} role="status">
           {jsonMsg.text}

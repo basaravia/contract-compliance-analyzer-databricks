@@ -61,6 +61,27 @@ export function apiJson<T>(url: string, method: string, body: unknown): Promise<
   return api<T>(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
+/** POST multipart con avance del envío (`fetch` no lo informa). `onProgress` recibe 0–1. */
+export function uploadWithProgress<T>(url: string, body: FormData, onProgress: (fraction: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.withCredentials = true;
+    const token = getCookie("ccap_csrf");
+    if (token) xhr.setRequestHeader("X-CSRF-Token", token);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) onProgress(ev.loaded / ev.total);
+    };
+    xhr.onload = async () => {
+      const resp = new Response(xhr.responseText, { status: xhr.status, headers: { "Content-Type": "application/json" } });
+      if (resp.ok) resolve((await resp.json()) as T);
+      else reject(await errorFrom(resp));
+    };
+    xhr.onerror = () => reject(new ApiError(0, "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo."));
+    xhr.send(body);
+  });
+}
+
 export async function download(url: string, filename: string): Promise<void> {
   const resp = await apiFetch(url);
   const blob = await resp.blob();

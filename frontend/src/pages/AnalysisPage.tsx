@@ -1,8 +1,41 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { download, errorMessage } from "../api/client";
-import { useAnalyses, useAnalysis, useDocuments, useRules, useRunAnalysis } from "../api/hooks";
+import { useAnalyses, useAnalysis, useAnalysisProgress, useDocuments, useRules, useRunAnalysis } from "../api/hooks";
+import { ANALYSIS_STATUS_LABELS } from "../api/types";
+import { AnalysisProgressPanel } from "../components/AnalysisProgressPanel";
+import { ProgressBar } from "../components/ProgressBar";
 import { StatusPill } from "../components/StatusPill";
+
+/** Mientras el análisis corre se muestra su avance; al terminar se recargan los hallazgos y la lista. */
+function RunningCard({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const progress = useAnalysisProgress(id, true);
+  const status = progress.data?.status;
+
+  useEffect(() => {
+    if (status && status !== "running") {
+      qc.invalidateQueries({ queryKey: ["analysis", id] });
+      qc.invalidateQueries({ queryKey: ["analyses"] });
+    }
+  }, [status, id, qc]);
+
+  return (
+    <div className="card">
+      <h2>Análisis en curso</h2>
+      {progress.data?.live ? (
+        <AnalysisProgressPanel live={progress.data.live} />
+      ) : (
+        <>
+          <ProgressBar label="Avance del análisis" />
+          <p className="hint">Iniciando…</p>
+        </>
+      )}
+      {progress.error && <p className="form-msg error">No se pudo consultar el avance: {errorMessage(progress.error)}</p>}
+    </div>
+  );
+}
 
 function FindingsCard({ id }: { id: string }) {
   const analysis = useAnalysis(id);
@@ -19,6 +52,7 @@ function FindingsCard({ id }: { id: string }) {
   if (analysis.isPending) return <p className="hint">Cargando análisis…</p>;
   if (analysis.error) return <p className="form-msg error">{errorMessage(analysis.error)}</p>;
   const a = analysis.data;
+  if (a.status === "running") return <RunningCard id={id} />;
 
   return (
     <div className="card">
@@ -104,10 +138,10 @@ export function AnalysisPage() {
     e.preventDefault();
     const target = contractId || contracts[0]?.id;
     if (!target) return setMsg({ text: "Sube un contrato primero.", kind: "error" });
-    setMsg({ text: "Ejecutando análisis… puede tardar según el número de reglas.", kind: "" });
+    setMsg({ text: "", kind: "" });
     try {
+      // El servidor responde al instante; el avance se sigue en la tarjeta del análisis.
       const a = await run.mutateAsync({ contractId: target, ruleIds: [...selected] });
-      setMsg({ text: `Análisis completado: ${a.findings.length} hallazgo(s).`, kind: "success" });
       navigate(`/analisis/${a.id}`);
     } catch (err) {
       setMsg({ text: errorMessage(err), kind: "error" });
@@ -141,7 +175,7 @@ export function AnalysisPage() {
               </div>
             </fieldset>
             <button type="submit" className="btn btn-primary" disabled={run.isPending}>
-              Ejecutar análisis
+              {run.isPending ? "Iniciando…" : "Ejecutar análisis"}
             </button>
             <p className={"form-msg " + msg.kind} role="status">
               {msg.text}
@@ -168,7 +202,7 @@ export function AnalysisPage() {
                 <tr key={a.id}>
                   <td>{a.id.slice(0, 8)}</td>
                   <td>{docTitle(a.contract_document_id)}</td>
-                  <td>{a.status}</td>
+                  <td>{ANALYSIS_STATUS_LABELS[a.status] ?? a.status}</td>
                   <td>{new Date(a.created_at).toLocaleString()}</td>
                   <td>
                     <Link className="btn btn-secondary btn-small" to={`/analisis/${a.id}`}>

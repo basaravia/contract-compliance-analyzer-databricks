@@ -109,6 +109,29 @@ export interface Analysis {
   rule_ids: string[];
 }
 
+export interface AnalysisProgress {
+  status: "running" | "done" | "failed" | "interrupted";
+  error_message: string | null;
+  live: {
+    phase: number;
+    phases: string[];
+    done: number;
+    total: number;
+    detail: string;
+    started_ts: number;
+    updated_ts: number;
+    now_ts: number;
+  } | null;
+}
+
+export const ANALYSIS_STATUS_LABELS: Record<string, string> = {
+  pending: "En cola",
+  running: "En curso",
+  done: "Terminado",
+  failed: "Falló",
+  interrupted: "Interrumpido",
+};
+
 export interface AnalysisDetail extends Analysis {
   findings: Finding[];
 }

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, apiJson } from "./client";
+import { api, apiJson, uploadWithProgress } from "./client";
 import type {
   Analysis,
   AnalysisDetail,
+  AnalysisProgress,
   BBox,
   DocType,
   DocumentOut,
@@ -33,13 +34,13 @@ function useInvalidating<TArg, TRes>(fn: (arg: TArg) => Promise<TRes>, keys: str
 
 export const useUploadDocument = () =>
   useInvalidating(
-    (v: { docType: DocType; title: string; jurisdiction: string; file: File }) => {
+    (v: { docType: DocType; title: string; jurisdiction: string; file: File; onProgress: (f: number) => void }) => {
       const form = new FormData();
       form.set("doc_type", v.docType);
       if (v.title) form.set("title", v.title);
       form.set("jurisdiction", v.jurisdiction);
       form.set("file", v.file);
-      return api<DocumentOut>("/api/documents", { method: "POST", body: form });
+      return uploadWithProgress<DocumentOut>("/api/documents", form, v.onProgress);
     },
     [["documents"]],
   );
@@ -67,9 +68,18 @@ export const useImportRules = () =>
 export const useRunAnalysis = () =>
   useInvalidating(
     (v: { contractId: string; ruleIds: string[] }) =>
-      apiJson<AnalysisDetail>("/api/analyses", "POST", { contract_document_id: v.contractId, rule_ids: v.ruleIds }),
+      apiJson<Analysis>("/api/analyses", "POST", { contract_document_id: v.contractId, rule_ids: v.ruleIds }),
     [["analyses"]],
   );
+
+/** Progreso de un análisis en curso: se consulta cada 1,5 s mientras sigue «running» (sondeo, como el comparador). */
+export const useAnalysisProgress = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["analysis-progress", id],
+    queryFn: () => api<AnalysisProgress>(`/api/analyses/${id}/progress`),
+    enabled,
+    refetchInterval: (q) => (q.state.data && q.state.data.status !== "running" ? false : 1500),
+  });
 
 export function useFindingMutations(analysisId: string) {
   const qc = useQueryClient();

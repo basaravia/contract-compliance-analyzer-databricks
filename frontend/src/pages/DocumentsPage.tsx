@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import { useDeleteDocument, useDocuments, useUploadDocument } from "../api/hooks";
 import type { DocType } from "../api/types";
+import { ProgressBar } from "../components/ProgressBar";
 
 export function DocumentsPage() {
   const docs = useDocuments();
@@ -13,19 +14,32 @@ export function DocumentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [filter, setFilter] = useState<"" | DocType>("");
   const [msg, setMsg] = useState<{ text: string; kind: "" | "error" | "success" }>({ text: "", kind: "" });
+  // Avance del envío (0–1); al llegar a 1 el servidor todavía lee el PDF, sin avance medible.
+  const [sent, setSent] = useState<number | null>(null);
+  // Se guarda el formulario en un ref: tras un `await`, `e.currentTarget` ya es null.
+  const formRef = useRef<HTMLFormElement>(null);
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!file) return setMsg({ text: "Selecciona un PDF.", kind: "error" });
-    setMsg({ text: "Subiendo y extrayendo texto…", kind: "" });
+    setMsg({ text: "", kind: "" });
+    setSent(0);
     try {
-      const d = await upload.mutateAsync({ docType, title: title.trim(), jurisdiction: jurisdiction.trim() || "EC", file });
-      setMsg({ text: `Documento subido (${d.page_count} páginas).`, kind: "success" });
+      const d = await upload.mutateAsync({
+        docType,
+        title: title.trim(),
+        jurisdiction: jurisdiction.trim() || "EC",
+        file,
+        onProgress: setSent,
+      });
+      setMsg({ text: `Listo: «${d.title ?? d.original_filename}» (${d.page_count} páginas).`, kind: "success" });
       setTitle("");
       setFile(null);
-      e.currentTarget.reset();
+      formRef.current?.reset();
     } catch (err) {
       setMsg({ text: errorMessage(err), kind: "error" });
+    } finally {
+      setSent(null);
     }
   };
 
@@ -35,7 +49,7 @@ export function DocumentsPage() {
     <div className="grid-2">
       <div className="card">
         <h2>Subir documento</h2>
-        <form onSubmit={submit}>
+        <form ref={formRef} onSubmit={submit}>
           <label>
             Tipo
             <select value={docType} onChange={(e) => setDocType(e.target.value as DocType)}>
@@ -56,8 +70,16 @@ export function DocumentsPage() {
             <input type="file" accept="application/pdf" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
           <button type="submit" className="btn btn-primary" disabled={upload.isPending}>
-            Subir
+            {upload.isPending ? "Subiendo…" : "Subir"}
           </button>
+          {sent !== null && (
+            <div className="upload-progress">
+              <ProgressBar value={sent < 1 ? sent : undefined} label="Avance de la subida" />
+              <p className="hint" role="status" aria-live="polite">
+                {sent < 1 ? `Enviando el archivo… ${Math.round(sent * 100)} %` : "Leyendo el texto del PDF… puede tardar si tiene muchas páginas."}
+              </p>
+            </div>
+          )}
           <p className={"form-msg " + msg.kind} role="status">
             {msg.text}
           </p>
