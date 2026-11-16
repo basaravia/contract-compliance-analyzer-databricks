@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import { useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../api/hooks";
-import type { Rule, Severity } from "../api/types";
+import { SEVERITY_LABELS, type Rule, type Severity } from "../api/types";
 import { ReferenceFields, toRefInput, type RefDraft } from "../components/ReferenceFields";
 import { RuleEditorDialog } from "../components/RuleEditorDialog";
 import { RuleImportWizard } from "../components/RuleImportWizard";
@@ -29,7 +29,7 @@ function NewRuleForm() {
         jurisdiction: jurisdiction.trim() || "EC",
         references: toRefInput(refs),
       });
-      setMsg({ text: "Regla creada.", kind: "success" });
+      setMsg({ text: "Criterio creado.", kind: "success" });
       setName("");
       setDescription("");
       setCategory("");
@@ -41,10 +41,10 @@ function NewRuleForm() {
 
   return (
     <div className="card">
-      <h2>Nueva regla</h2>
+      <h2>Nuevo criterio</h2>
       <form onSubmit={submit}>
         <label>
-          Nombre
+          Nombre del criterio
           <input type="text" maxLength={200} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label>
@@ -57,7 +57,7 @@ function NewRuleForm() {
             <input type="text" maxLength={100} value={category} onChange={(e) => setCategory(e.target.value)} />
           </label>
           <label>
-            Severidad
+            Importancia
             <select value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
               <option value="alta">Alta</option>
               <option value="media">Media</option>
@@ -71,7 +71,7 @@ function NewRuleForm() {
         </div>
         <ReferenceFields value={refs} onChange={setRefs} />
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-          {create.isPending ? "Guardando…" : "Crear regla"}
+          {create.isPending ? "Guardando…" : "Crear criterio"}
         </button>
         <p className={"form-msg " + msg.kind} role="status">
           {msg.text}
@@ -96,7 +96,7 @@ export function RulesPage() {
         <RuleImportWizard />
       </div>
       <div className="card">
-        <h2>Reglas existentes</h2>
+        <h2>Criterios existentes</h2>
         <label className="inline-check">
           <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Mostrar solo activas
         </label>
@@ -104,10 +104,10 @@ export function RulesPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Nombre</th>
+              <th>Criterio</th>
               <th>Categoría</th>
-              <th>Severidad</th>
-              <th>Jurisd.</th>
+              <th>Importancia</th>
+              <th>País</th>
               <th>Estado</th>
               <th>Referencias</th>
               <th></th>
@@ -118,7 +118,7 @@ export function RulesPage() {
               <tr key={r.id}>
                 <td>{r.name}</td>
                 <td>{r.category ?? "—"}</td>
-                <td>{r.severity}</td>
+                <td>{SEVERITY_LABELS[r.severity] ?? r.severity}</td>
                 <td>{r.jurisdiction}</td>
                 <td>
                   <div className="active-switch-wrap">
@@ -145,7 +145,7 @@ export function RulesPage() {
                   <button
                     type="button"
                     className="btn btn-danger btn-small"
-                    onClick={() => confirm(`¿Eliminar la regla «${r.name}»?`) && remove.mutate(r.id, { onError: (err) => alert(errorMessage(err)) })}
+                    onClick={() => confirm(`¿Eliminar el criterio «${r.name}»?`) && remove.mutate(r.id, { onError: (err) => alert(errorMessage(err)) })}
                   >
                     Eliminar
                   </button>

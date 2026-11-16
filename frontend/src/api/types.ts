@@ -10,6 +10,24 @@ export const STATUS_LABELS: Record<FindingStatus, string> = {
   requiere_revision: "Requiere revisión",
 };
 
+/** Qué significa cada resultado, en lenguaje de auditoría (se muestra en «¿Cómo leer los resultados?»). */
+export const STATUS_HELP: Record<FindingStatus, string> = {
+  cumple: "El contrato cubre el criterio. Hay un fragmento que lo respalda.",
+  no_cumple: "El contrato no cubre el criterio o lo contradice.",
+  parcial: "Lo cubre solo en parte: falta algún elemento que el criterio exige.",
+  no_determinable: "No hay texto suficiente para decidir (por ejemplo, un PDF escaneado).",
+  requiere_revision: "La IA no está segura. Revísalo tú en el PDF antes de concluir.",
+};
+
+export const SEVERITY_LABELS: Record<Severity, string> = { alta: "Alta", media: "Media", baja: "Baja" };
+export const DOC_TYPE_LABELS: Record<DocType, string> = { contrato: "Contrato", normativa: "Normativa" };
+export const EXTRACTION_LABELS: Record<string, string> = {
+  done: "Listo",
+  pending: "Procesando",
+  scanned_no_ocr: "Escaneado: sin texto legible",
+  failed: "No se pudo leer",
+};
+
 export interface User {
   email: string;
   name: string;

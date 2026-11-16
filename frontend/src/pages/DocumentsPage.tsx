@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { errorMessage } from "../api/client";
 import { useDeleteDocument, useDocuments, useUploadDocument } from "../api/hooks";
-import type { DocType } from "../api/types";
+import { DOC_TYPE_LABELS, EXTRACTION_LABELS, type DocType } from "../api/types";
 import { ProgressBar } from "../components/ProgressBar";
 
 export function DocumentsPage() {
@@ -62,7 +62,7 @@ export function DocumentsPage() {
             <input type="text" maxLength={200} placeholder="Ej. Contrato de servicios cloud" value={title} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <label>
-            Jurisdicción
+            País (código)
             <input type="text" maxLength={10} value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} />
           </label>
           <label>
@@ -102,15 +102,17 @@ export function DocumentsPage() {
           </button>
         </div>
         {docs.error && <p className="form-msg error">{errorMessage(docs.error)}</p>}
+        {docs.data && rows.length === 0 && (
+          <p className="empty">Todavía no hay documentos. Sube un contrato con el formulario de la izquierda para empezar.</p>
+        )}
         <table className="data-table">
           <thead>
             <tr>
               <th>Título</th>
               <th>Tipo</th>
-              <th>Jurisd.</th>
-              <th>Pág.</th>
-              <th>Estado extracción</th>
-              <th>Escaneado</th>
+              <th>País</th>
+              <th>Páginas</th>
+              <th>Estado</th>
               <th></th>
             </tr>
           </thead>
@@ -118,11 +120,10 @@ export function DocumentsPage() {
             {rows.map((d) => (
               <tr key={d.id}>
                 <td>{d.title ?? d.original_filename}</td>
-                <td>{d.doc_type}</td>
+                <td>{DOC_TYPE_LABELS[d.doc_type]}</td>
                 <td>{d.jurisdiction}</td>
                 <td>{d.page_count}</td>
-                <td>{d.extraction_status}</td>
-                <td>{d.is_scanned ? "Sí" : "No"}</td>
+                <td>{EXTRACTION_LABELS[d.extraction_status] ?? d.extraction_status}</td>
                 <td>
                   <button
                     type="button"

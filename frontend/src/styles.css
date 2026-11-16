@@ -453,3 +453,26 @@ legend { font-size: 0.8rem; color: var(--color-muted); padding: 0 0.3rem; }
 .notice.warn { background: #fffbeb; border: 1px solid #f59e0b; color: #78350f; }
 .notice ul { margin: 0.3rem 0 0; padding-left: 1.2rem; }
 .warn { color: #b45309; }
+
+/* Lenguaje de auditor: resúmenes, ayudas y estados vacíos */
+html { font-size: 16px; }
+.summary-chips { list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; padding: 0; margin: 0.4rem 0 0.6rem; }
+.tag { margin-left: 0.4rem; font-size: 0.75rem; color: var(--color-muted); }
+.info { cursor: help; color: var(--color-primary); font-weight: 400; }
+.empty { padding: 0.6rem 0.8rem; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; color: #1e3a8a; font-size: 0.9rem; }
+.help { margin-top: 1rem; }
+.help summary { cursor: pointer; font-weight: 600; }
+.help dl > div { display: flex; gap: 0.8rem; align-items: baseline; margin: 0.4rem 0; }
+.help dt { min-width: 9rem; }
+.help dd { margin: 0; font-size: 0.9rem; }
+:is(a, button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
+
+/* Móvil: nada desborda el ancho de la pantalla; las tablas se desplazan dentro de su tarjeta */
+.grid-2 > *, .review-body > * { min-width: 0; }
+.card { overflow-x: auto; }
+.topbar { flex-wrap: wrap; gap: 0.5rem; }
+@media (max-width: 700px) {
+  .review-body { flex-direction: column; }
+  .tabs { overflow-x: auto; }
+  .toolbar-group { flex-wrap: wrap; }
+}

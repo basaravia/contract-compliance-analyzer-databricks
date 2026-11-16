@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { download, errorMessage } from "../api/client";
 import { useAnalyses, useAnalysis, useAnalysisProgress, useDocuments, useRules, useRunAnalysis } from "../api/hooks";
-import { ANALYSIS_STATUS_LABELS } from "../api/types";
+import { ANALYSIS_STATUS_LABELS, SEVERITY_LABELS, STATUS_HELP, STATUS_LABELS, type FindingStatus } from "../api/types";
+import { certainty } from "../components/AiAssistant";
 import { AnalysisProgressPanel } from "../components/AnalysisProgressPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusPill } from "../components/StatusPill";
@@ -54,38 +55,47 @@ function FindingsCard({ id }: { id: string }) {
   const a = analysis.data;
   if (a.status === "running") return <RunningCard id={id} />;
 
+  const counts = (Object.keys(STATUS_LABELS) as FindingStatus[])
+    .map((k) => ({ k, n: a.findings.filter((f) => f.status === k).length }))
+    .filter((c) => c.n > 0);
+
   return (
     <div className="card">
       <div className="card-header-row">
-        <h2>Hallazgos del análisis</h2>
+        <h2>Resultados del análisis</h2>
         <div className="export-buttons">
-          <button type="button" className="btn btn-secondary" onClick={() => save("export.pdf", `analisis-${id}.pdf`)}>
-            Descargar PDF anotado
-          </button>
-          <button type="button" className="btn btn-secondary" onClick={() => save("export.json", `analisis-${id}.json`)}>
-            Descargar JSON
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => save("papel-trabajo.xlsx", `papel-trabajo-${id}.xlsx`)}>
-            Descargar papel de trabajo (Excel)
-          </button>
           <Link className="btn btn-primary" to={`/analisis/${id}/revision`}>
-            Abrir revisión visual
+            Revisar en el PDF
           </Link>
+          <button type="button" className="btn btn-secondary" onClick={() => save("papel-trabajo.xlsx", `papel-trabajo-${id}.xlsx`)}>
+            Papel de trabajo (Excel)
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => save("export.pdf", `analisis-${id}.pdf`)}>
+            PDF con marcas
+          </button>
         </div>
       </div>
       {exportError && <p className="form-msg error">{exportError}</p>}
       {a.error_message && <p className="form-msg error">{a.error_message}</p>}
+      {a.status === "interrupted" && <p className="form-msg error">Este análisis se interrumpió. Vuelve a ejecutarlo.</p>}
+      <ul className="summary-chips" aria-label="Resumen de resultados">
+        {counts.map(({ k, n }) => (
+          <li key={k}>
+            <StatusPill status={k} /> <strong>{n}</strong>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">Pulsa «Revisar en el PDF» para ver cada hallazgo marcado en el contrato, corregirlo o analizarlo de nuevo con IA.</p>
       <table className="data-table">
         <thead>
           <tr>
-            <th>Regla</th>
-            <th>Estado</th>
-            <th>Severidad</th>
-            <th>Confianza</th>
-            <th>Manual</th>
-            <th>Editado</th>
+            <th>Criterio</th>
+            <th>Resultado</th>
+            <th>Importancia</th>
+            <th>
+              Nivel de certeza <span className="info" title="Qué tan segura está la IA de su resultado. Con certeza Baja conviene revisarlo en el PDF.">ⓘ</span>
+            </th>
             <th>Página</th>
-            <th>Traza</th>
           </tr>
         </thead>
         <tbody>
@@ -94,17 +104,30 @@ function FindingsCard({ id }: { id: string }) {
               <td>{ruleName(f.rule_id)}</td>
               <td>
                 <StatusPill status={f.status} />
+                {(f.is_manual || f.edited) && <span className="tag">{f.is_manual ? "agregado por ti" : "corregido por ti"}</span>}
               </td>
-              <td>{f.severity}</td>
-              <td>{f.confidence.toFixed(2)}</td>
-              <td>{f.is_manual ? "Sí" : "No"}</td>
-              <td>{f.edited ? "Sí" : "No"}</td>
+              <td>{SEVERITY_LABELS[f.severity] ?? f.severity}</td>
+              <td>{certainty(f.confidence)}</td>
               <td>{f.page ?? "—"}</td>
-              <td>{f.trace?.method_summary ?? "—"}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      <details className="help">
+        <summary>¿Cómo leer los resultados?</summary>
+        <dl>
+          {(Object.keys(STATUS_LABELS) as FindingStatus[]).map((k) => (
+            <div key={k}>
+              <dt><StatusPill status={k} /></dt>
+              <dd>{STATUS_HELP[k]}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="hint">La IA propone y tú decides: todo resultado se puede corregir en el PDF. El papel de trabajo en Excel recoge el resultado final.</p>
+        <button type="button" className="link-btn" onClick={() => save("export.json", `analisis-${id}.json`)}>
+          Descargar datos técnicos (JSON)
+        </button>
+      </details>
     </div>
   );
 }
@@ -153,6 +176,12 @@ export function AnalysisPage() {
       <div className="grid-2">
         <div className="card">
           <h2>Nuevo análisis</h2>
+          {contracts.length === 0 && (
+            <p className="empty">Primero sube un contrato en <Link to="/documentos">1. Documentos</Link>.</p>
+          )}
+          {contracts.length > 0 && activeRules.length === 0 && (
+            <p className="empty">Aún no hay criterios activos. Cárgalos en <Link to="/reglas">2. Criterios</Link>.</p>
+          )}
           <form onSubmit={submit}>
             <label>
               Contrato
@@ -165,7 +194,7 @@ export function AnalysisPage() {
               </select>
             </label>
             <fieldset>
-              <legend>Reglas a evaluar (ninguna marcada = todas las activas)</legend>
+              <legend>Criterios a evaluar <span className="optional">(si no marcas ninguno, se usan todos los activos)</span></legend>
               <div className="checkbox-list">
                 {activeRules.map((r) => (
                   <label key={r.id}>
@@ -183,24 +212,22 @@ export function AnalysisPage() {
           </form>
         </div>
         <div className="card">
-          <h2>Análisis existentes</h2>
+          <h2>Análisis anteriores</h2>
           <button type="button" className="btn btn-secondary" onClick={() => analyses.refetch()}>
             Actualizar
           </button>
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
                 <th>Contrato</th>
                 <th>Estado</th>
-                <th>Creado</th>
+                <th>Fecha</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {(analyses.data ?? []).map((a) => (
                 <tr key={a.id}>
-                  <td>{a.id.slice(0, 8)}</td>
                   <td>{docTitle(a.contract_document_id)}</td>
                   <td>{ANALYSIS_STATUS_LABELS[a.status] ?? a.status}</td>
                   <td>{new Date(a.created_at).toLocaleString()}</td>

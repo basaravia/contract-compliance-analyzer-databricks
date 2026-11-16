@@ -100,7 +100,7 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rule-editor-title">
         <div className="modal-header">
-          <h2 id="rule-editor-title">Editar regla</h2>
+          <h2 id="rule-editor-title">Editar criterio</h2>
           <button type="button" className="modal-close" aria-label="Cerrar editor" onClick={onClose}>
             ×
           </button>
@@ -136,7 +136,7 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
                   <input type="text" maxLength={100} value={draft.category} onChange={(e) => patch({ category: e.target.value })} />
                 </label>
                 <label>
-                  Severidad
+                  Importancia
                   <select value={draft.severity} onChange={(e) => patch({ severity: e.target.value as Severity })}>
                     <option value="alta">Alta</option>
                     <option value="media">Media</option>
@@ -148,7 +148,7 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
                   <input type="text" value={rule.jurisdiction} disabled />
                 </label>
               </div>
-              <p className="hint">La jurisdicción se fija al crear la regla y no puede modificarse desde este editor.</p>
+              <p className="hint">La jurisdicción se fija al crear el criterio y no puede modificarse desde este editor.</p>
               <ReferenceFields value={draft.references} onChange={(references) => patch({ references })} />
               <div className="switch-field">
                 <button
@@ -156,7 +156,7 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
                   className="switch"
                   role="switch"
                   aria-checked={draft.active}
-                  aria-label="Regla activa"
+                  aria-label="Criterio activo"
                   onClick={() => patch({ active: !draft.active })}
                 >
                   <span className="switch-track">

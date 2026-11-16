@@ -27,10 +27,10 @@ function Layout() {
       <header className="topbar">
         <div className="topbar-title">
           <h1>Analizador de Cumplimiento Contractual</h1>
-          <p className="subtitle">MVP — evidencia trazable (página + coordenadas). No constituye asesoría legal.</p>
+          <p className="subtitle">Comprueba si un contrato cumple tus criterios y deja la evidencia marcada en el PDF. No constituye asesoría legal.</p>
         </div>
         <div className="topbar-meta">
-          <span className="badge">modo: {user?.auth_mode}</span>
+          {user?.auth_mode === "local" && <span className="badge">modo de desarrollo</span>}
           <span className="badge badge-muted">{user?.email}</span>
           {canLogout && (
             <button type="button" className="btn btn-secondary" onClick={logout}>
@@ -41,9 +41,9 @@ function Layout() {
       </header>
       <nav className="tabs" aria-label="Secciones">
         {[
-          ["/documentos", "Documentos"],
-          ["/reglas", "Reglas"],
-          ["/analisis", "Análisis"],
+          ["/documentos", "1. Documentos"],
+          ["/reglas", "2. Criterios"],
+          ["/analisis", "3. Análisis"],
         ].map(([to, label]) => (
           <NavLink key={to} to={to} className={({ isActive }) => "tab-btn" + (isActive ? " active" : "")}>
             {label}
