@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { FileText, ListChecks, LogOut, ShieldCheck } from "lucide-react";
 import { NavLink, Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { ApiError, apiFetch } from "./api/client";
 import { useMe } from "./api/hooks";
@@ -24,33 +25,38 @@ function Layout() {
 
   return (
     <>
+      <a className="skip-link" href="#contenido">
+        Saltar al contenido
+      </a>
       <header className="topbar">
         <div className="topbar-title">
-          <h1>Analizador de Cumplimiento Contractual</h1>
-          <p className="subtitle">Comprueba si un contrato cumple tus criterios y deja la evidencia marcada en el PDF. No constituye asesoría legal.</p>
+          <h1>
+            <ShieldCheck size={22} className="brand-icon" /> Analizador de Cumplimiento Contractual
+          </h1>
+          <p className="subtitle">Comprueba un contrato contra tus criterios, con la evidencia marcada en el PDF. No es asesoría legal.</p>
         </div>
         <div className="topbar-meta">
           {user?.auth_mode === "local" && <span className="badge">modo de desarrollo</span>}
-          <span className="badge badge-muted">{user?.email}</span>
+          <span className="user-email">{user?.email}</span>
           {canLogout && (
             <button type="button" className="btn btn-secondary" onClick={logout}>
-              Cerrar sesión
+              <LogOut size={16} /> Cerrar sesión
             </button>
           )}
         </div>
       </header>
       <nav className="tabs" aria-label="Secciones">
-        {[
-          ["/documentos", "1. Documentos"],
-          ["/reglas", "2. Criterios"],
-          ["/analisis", "3. Análisis"],
-        ].map(([to, label]) => (
+        {([
+          ["/documentos", "1. Documentos", FileText],
+          ["/reglas", "2. Criterios", ListChecks],
+          ["/analisis", "3. Análisis", ShieldCheck],
+        ] as const).map(([to, label, Icon]) => (
           <NavLink key={to} to={to} className={({ isActive }) => "tab-btn" + (isActive ? " active" : "")}>
-            {label}
+            <Icon size={16} /> {label}
           </NavLink>
         ))}
       </nav>
-      <main>
+      <main id="contenido" tabIndex={-1}>
         <Outlet />
       </main>
     </>
@@ -59,9 +65,9 @@ function Layout() {
 
 export function App() {
   const { isPending, error } = useMe();
-  if (isPending) return <p className="hint">Cargando…</p>;
+  if (isPending) return <p className="loading" role="status">Cargando…</p>;
   if (error instanceof ApiError && error.status === 401) return <LoginPage />;
-  if (error) return <p className="form-msg error">No se pudo contactar con el servidor.</p>;
+  if (error) return <p className="form-msg error" role="alert">No se pudo contactar con el servidor.</p>;
 
   return (
     <Routes>

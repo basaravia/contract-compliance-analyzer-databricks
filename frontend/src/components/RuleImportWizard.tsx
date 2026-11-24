@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowLeft, ArrowRight, CircleCheck, ClipboardPaste, Download, FileJson, FileSpreadsheet, ListChecks, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { download, errorMessage } from "../api/client";
 import { useImportRules, usePreviewRules } from "../api/hooks";
@@ -77,13 +78,13 @@ export function RuleImportWizard() {
           <div className="toolbar-group source-picker" role="group" aria-label="Formato de origen">
             {(
               [
-                ["excel", "Excel (recomendado)"],
-                ["texto", "Pegar texto"],
-                ["json", "Archivo JSON"],
+                ["excel", "Excel (recomendado)", FileSpreadsheet],
+                ["texto", "Pegar texto", ClipboardPaste],
+                ["json", "Archivo JSON", FileJson],
               ] as const
-            ).map(([s, label]) => (
+            ).map(([s, label, Icon]) => (
               <button key={s} type="button" aria-pressed={source === s} className={"btn btn-small " + (source === s ? "btn-primary" : "btn-secondary")} onClick={() => (setSource(s), setFile(null), setMessage(""))}>
-                {label}
+                <Icon size={14} /> {label}
               </button>
             ))}
           </div>
@@ -94,7 +95,7 @@ export function RuleImportWizard() {
                 <strong>1.</strong> Descarga la plantilla, escribe un criterio por fila y guárdala.
                 <br />
                 <button type="button" className="btn btn-secondary btn-small" onClick={() => download("/api/rules/template.xlsx", "plantilla-criterios.xlsx").catch((e) => setMessage(errorMessage(e)))}>
-                  Descargar plantilla de Excel
+                  <Download size={14} /> Descargar plantilla de Excel
                 </button>
               </p>
               <p>
@@ -125,7 +126,7 @@ export function RuleImportWizard() {
             </label>
           )}
           <button type="button" className="btn btn-primary" disabled={!ready || preview.isPending} onClick={review}>
-            {preview.isPending ? "Revisando…" : "Revisar antes de cargar"}
+            {preview.isPending ? "Revisando…" : <><ListChecks size={16} /> Revisar antes de cargar</>}
           </button>
           {message && <p className="form-msg error" role="alert">{message}</p>}
         </>
@@ -168,7 +169,7 @@ export function RuleImportWizard() {
               {imp.isPending ? "Cargando…" : `Cargar ${result.rules.length} ${result.rules.length === 1 ? "criterio" : "criterios"}`}
             </button>{" "}
             <button type="button" className="btn btn-secondary" onClick={restart}>
-              Volver y corregir
+              <ArrowLeft size={16} /> Volver y corregir
             </button>
           </p>
           {message && <p className="form-msg error" role="alert">{message}</p>}
@@ -177,9 +178,9 @@ export function RuleImportWizard() {
 
       {step === 2 && (
         <>
-          <p className="form-msg success" role="status">✓ Se cargaron {done} {done === 1 ? "criterio" : "criterios"}. Ya aparecen en la lista de abajo.</p>
-          <button type="button" className="btn btn-secondary" onClick={restart}>Cargar más</button>{" "}
-          <Link className="btn btn-primary" to="/analisis">Ir a analizar un contrato</Link>
+          <p className="form-msg success" role="status"><CircleCheck size={16} className="inline-icon" /> Se cargaron {done} {done === 1 ? "criterio" : "criterios"}. Ya aparecen en la lista de abajo.</p>
+          <button type="button" className="btn btn-secondary" onClick={restart}><Upload size={16} /> Cargar más</button>{" "}
+          <Link className="btn btn-primary" to="/analisis">Ir a analizar un contrato <ArrowRight size={16} /></Link>
         </>
       )}
     </div>

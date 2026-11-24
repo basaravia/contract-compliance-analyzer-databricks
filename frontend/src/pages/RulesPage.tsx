@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { errorMessage } from "../api/client";
 import { useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../api/hooks";
 import { SEVERITY_LABELS, type Rule, type Severity } from "../api/types";
@@ -40,8 +41,10 @@ function NewRuleForm() {
   };
 
   return (
-    <div className="card">
-      <h2>Nuevo criterio</h2>
+    <details className="card disclosure">
+      <summary>
+        <Plus size={16} /> Crear un criterio a mano
+      </summary>
       <form onSubmit={submit}>
         <label>
           Nombre del criterio
@@ -71,13 +74,13 @@ function NewRuleForm() {
         </div>
         <ReferenceFields value={refs} onChange={setRefs} />
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-          {create.isPending ? "Guardando…" : "Crear criterio"}
+          {create.isPending ? "Guardando…" : <><Plus size={16} /> Crear criterio</>}
         </button>
         <p className={"form-msg " + msg.kind} role="status">
           {msg.text}
         </p>
       </form>
-    </div>
+    </details>
   );
 }
 
@@ -87,20 +90,22 @@ export function RulesPage() {
   const remove = useDeleteRule();
   const [activeOnly, setActiveOnly] = useState(false);
   const [editing, setEditing] = useState<Rule | null>(null);
+  const [rowError, setRowError] = useState("");
   const rows = (rules.data ?? []).filter((r) => !activeOnly || r.active);
 
   return (
     <>
       <div className="grid-2">
-        <NewRuleForm />
         <RuleImportWizard />
+        <NewRuleForm />
       </div>
       <div className="card">
         <h2>Criterios existentes</h2>
         <label className="inline-check">
           <input type="checkbox" checked={activeOnly} onChange={(e) => setActiveOnly(e.target.checked)} /> Mostrar solo activas
         </label>
-        {rules.error && <p className="form-msg error">{errorMessage(rules.error)}</p>}
+        {rules.error && <p className="form-msg error" role="alert">{errorMessage(rules.error)}</p>}
+        {rowError && <p className="form-msg error" role="alert">{rowError}</p>}
         <table className="data-table">
           <thead>
             <tr>
@@ -128,7 +133,7 @@ export function RulesPage() {
                       role="switch"
                       aria-checked={r.active}
                       aria-label={`Activar o desactivar «${r.name}»`}
-                      onClick={() => update.mutate({ id: r.id, patch: { active: !r.active } }, { onError: (err) => alert(errorMessage(err)) })}
+                      onClick={() => update.mutate({ id: r.id, patch: { active: !r.active } }, { onError: (err) => setRowError(errorMessage(err)) })}
                     >
                       <span className="switch-track">
                         <span className="switch-thumb" />
@@ -139,15 +144,17 @@ export function RulesPage() {
                 </td>
                 <td>{r.references.map((x) => x.citation + (x.page ? ` (p. ${x.page})` : "")).join("; ") || "—"}</td>
                 <td>
-                  <button type="button" className="btn btn-secondary btn-small" onClick={() => setEditing(r)}>
-                    Editar
-                  </button>{" "}
+                  <button type="button" className="btn btn-icon" title="Editar criterio" aria-label={`Editar «${r.name}»`} onClick={() => setEditing(r)}>
+                    <Pencil size={16} />
+                  </button>
                   <button
                     type="button"
-                    className="btn btn-danger btn-small"
-                    onClick={() => confirm(`¿Eliminar el criterio «${r.name}»?`) && remove.mutate(r.id, { onError: (err) => alert(errorMessage(err)) })}
+                    className="btn btn-icon btn-icon-danger"
+                    title="Eliminar criterio"
+                    aria-label={`Eliminar «${r.name}»`}
+                    onClick={() => confirm(`¿Eliminar el criterio «${r.name}»?`) && remove.mutate(r.id, { onError: (err) => setRowError(errorMessage(err)) })}
                   >
-                    Eliminar
+                    <Trash2 size={16} />
                   </button>
                 </td>
               </tr>

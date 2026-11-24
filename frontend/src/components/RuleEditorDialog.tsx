@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "../api/client";
 import { useUpdateRule } from "../api/hooks";
 import type { Rule, Severity } from "../api/types";
@@ -39,6 +39,22 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
   const [json, setJson] = useState(() => JSON.stringify(toPayload(fromRule(rule)), null, 2));
   const [jsonError, setJsonError] = useState("");
   const [msg, setMsg] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Accesibilidad del modal: Escape cierra, el foco entra al diálogo y vuelve al botón que lo abrió.
+  useEffect(() => {
+    const previo = document.activeElement as HTMLElement | null;
+    dialogRef.current?.querySelector<HTMLElement>("input, textarea, select, button")?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      previo?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -98,7 +114,7 @@ export function RuleEditorDialog({ rule, onClose }: { rule: Rule; onClose: () =>
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rule-editor-title">
+      <div ref={dialogRef} className="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="rule-editor-title">
         <div className="modal-header">
           <h2 id="rule-editor-title">Editar criterio</h2>
           <button type="button" className="modal-close" aria-label="Cerrar editor" onClick={onClose}>

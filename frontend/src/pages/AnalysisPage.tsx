@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { Eye, FileDown, FileSpreadsheet, Play, RefreshCw, ScanSearch } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { download, errorMessage } from "../api/client";
@@ -30,7 +31,7 @@ function RunningCard({ id }: { id: string }) {
       ) : (
         <>
           <ProgressBar label="Avance del análisis" />
-          <p className="hint">Iniciando…</p>
+          <p className="loading" role="status">Iniciando…</p>
         </>
       )}
       {progress.error && <p className="form-msg error">No se pudo consultar el avance: {errorMessage(progress.error)}</p>}
@@ -50,8 +51,8 @@ function FindingsCard({ id }: { id: string }) {
       (e) => setExportError(errorMessage(e)),
     );
 
-  if (analysis.isPending) return <p className="hint">Cargando análisis…</p>;
-  if (analysis.error) return <p className="form-msg error">{errorMessage(analysis.error)}</p>;
+  if (analysis.isPending) return <p className="loading" role="status">Cargando análisis…</p>;
+  if (analysis.error) return <p className="form-msg error" role="alert">{errorMessage(analysis.error)}</p>;
   const a = analysis.data;
   if (a.status === "running") return <RunningCard id={id} />;
 
@@ -65,18 +66,18 @@ function FindingsCard({ id }: { id: string }) {
         <h2>Resultados del análisis</h2>
         <div className="export-buttons">
           <Link className="btn btn-primary" to={`/analisis/${id}/revision`}>
-            Revisar en el PDF
+            <ScanSearch size={16} /> Revisar en el PDF
           </Link>
           <button type="button" className="btn btn-secondary" onClick={() => save("papel-trabajo.xlsx", `papel-trabajo-${id}.xlsx`)}>
-            Papel de trabajo (Excel)
+            <FileSpreadsheet size={16} /> Papel de trabajo (Excel)
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => save("export.pdf", `analisis-${id}.pdf`)}>
-            PDF con marcas
+            <FileDown size={16} /> PDF con marcas
           </button>
         </div>
       </div>
-      {exportError && <p className="form-msg error">{exportError}</p>}
-      {a.error_message && <p className="form-msg error">{a.error_message}</p>}
+      {exportError && <p className="form-msg error" role="alert">{exportError}</p>}
+      {a.error_message && <p className="form-msg error" role="alert">{a.error_message}</p>}
       {a.status === "interrupted" && <p className="form-msg error">Este análisis se interrumpió. Vuelve a ejecutarlo.</p>}
       <ul className="summary-chips" aria-label="Resumen de resultados">
         {counts.map(({ k, n }) => (
@@ -204,7 +205,7 @@ export function AnalysisPage() {
               </div>
             </fieldset>
             <button type="submit" className="btn btn-primary" disabled={run.isPending}>
-              {run.isPending ? "Iniciando…" : "Ejecutar análisis"}
+              {run.isPending ? "Iniciando…" : <><Play size={16} /> Ejecutar análisis</>}
             </button>
             <p className={"form-msg " + msg.kind} role="status">
               {msg.text}
@@ -214,7 +215,7 @@ export function AnalysisPage() {
         <div className="card">
           <h2>Análisis anteriores</h2>
           <button type="button" className="btn btn-secondary" onClick={() => analyses.refetch()}>
-            Actualizar
+            <RefreshCw size={16} /> Actualizar
           </button>
           <table className="data-table">
             <thead>
@@ -233,7 +234,7 @@ export function AnalysisPage() {
                   <td>{new Date(a.created_at).toLocaleString()}</td>
                   <td>
                     <Link className="btn btn-secondary btn-small" to={`/analisis/${a.id}`}>
-                      Ver
+                      <Eye size={14} /> Ver
                     </Link>
                   </td>
                 </tr>

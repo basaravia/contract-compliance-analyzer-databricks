@@ -1,3 +1,4 @@
+import { Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { errorMessage } from "../api/client";
 import type { RegionProposal } from "../api/types";
@@ -63,7 +64,7 @@ export function AiAssistant({ analyze, accept, acceptLabel, initialInstructions 
         />
       </label>
       <button type="button" className="btn btn-primary btn-small" disabled={busy} onClick={run}>
-        {busy && !proposal ? "Analizando…" : proposal ? "Analizar de nuevo" : "Analizar con IA"}
+        {busy && !proposal ? "Analizando…" : proposal ? "Analizar de nuevo" : <><Sparkles size={14} /> Analizar con IA</>}
       </button>
       {busy && !proposal && (
         <>
@@ -85,7 +86,7 @@ export function AiAssistant({ analyze, accept, acceptLabel, initialInstructions 
             {acceptLabel}
           </button>{" "}
           <button type="button" className="btn btn-secondary btn-small" disabled={busy} onClick={() => setProposal(null)}>
-            Descartar
+            <X size={14} /> Descartar
           </button>
         </div>
       )}

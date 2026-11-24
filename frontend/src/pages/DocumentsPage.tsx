@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { RefreshCw, Trash2, Upload } from "lucide-react";
 import { errorMessage } from "../api/client";
 import { useDeleteDocument, useDocuments, useUploadDocument } from "../api/hooks";
 import { DOC_TYPE_LABELS, EXTRACTION_LABELS, type DocType } from "../api/types";
@@ -70,7 +71,7 @@ export function DocumentsPage() {
             <input type="file" accept="application/pdf" required onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           </label>
           <button type="submit" className="btn btn-primary" disabled={upload.isPending}>
-            {upload.isPending ? "Subiendo…" : "Subir"}
+            {upload.isPending ? "Subiendo…" : <><Upload size={16} /> Subir</>}
           </button>
           {sent !== null && (
             <div className="upload-progress">
@@ -98,10 +99,10 @@ export function DocumentsPage() {
             </select>
           </label>
           <button type="button" className="btn btn-secondary" onClick={() => docs.refetch()}>
-            Actualizar
+            <RefreshCw size={16} /> Actualizar
           </button>
         </div>
-        {docs.error && <p className="form-msg error">{errorMessage(docs.error)}</p>}
+        {docs.error && <p className="form-msg error" role="alert">{errorMessage(docs.error)}</p>}
         {docs.data && rows.length === 0 && (
           <p className="empty">Todavía no hay documentos. Sube un contrato con el formulario de la izquierda para empezar.</p>
         )}
@@ -127,13 +128,15 @@ export function DocumentsPage() {
                 <td>
                   <button
                     type="button"
-                    className="btn btn-danger btn-small"
+                    className="btn btn-icon btn-icon-danger"
+                    title="Eliminar documento"
+                    aria-label={`Eliminar «${d.title ?? d.original_filename}»`}
                     onClick={() => {
                       if (!confirm(`¿Eliminar «${d.title ?? d.original_filename}»?`)) return;
-                      remove.mutate(d.id, { onError: (err) => alert(errorMessage(err)) });
+                      remove.mutate(d.id, { onError: (err) => setMsg({ text: errorMessage(err), kind: "error" }) });
                     }}
                   >
-                    Eliminar
+                    <Trash2 size={16} />
                   </button>
                 </td>
               </tr>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Maximize2, MousePointer2, Save, SquareDashed, TextCursorInput, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { AiAssistant, certainty } from "./AiAssistant";
 import { PdfPageView, usePdfDocument } from "./PdfPageView";
 import { errorMessage } from "../api/client";
@@ -249,7 +250,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
       <div className="review-toolbar">
         <div className="toolbar-group" role="group" aria-label="Página">
           <button type="button" className="btn btn-secondary btn-small" disabled={page <= 1} onClick={() => goTo(page - 1)} aria-label="Página anterior">
-            ←
+            <ChevronLeft size={16} />
           </button>
           <label className="inline-field">
             Página
@@ -264,29 +265,29 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
             de {pageCount}
           </label>
           <button type="button" className="btn btn-secondary btn-small" disabled={page >= pageCount} onClick={() => goTo(page + 1)} aria-label="Página siguiente">
-            →
+            <ChevronRight size={16} />
           </button>
         </div>
         <div className="toolbar-group" role="group" aria-label="Zoom">
           <button type="button" className="btn btn-secondary btn-small" disabled={zoom <= 0.5} onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.25).toFixed(2)))} aria-label="Alejar">
-            −
+            <ZoomOut size={16} />
           </button>
           <span className="zoom-value" aria-live="polite">{Math.round(zoom * 100)} %</span>
           <button type="button" className="btn btn-secondary btn-small" disabled={zoom >= 3} onClick={() => setZoom((z) => Math.min(3, +(z + 0.25).toFixed(2)))} aria-label="Acercar">
-            +
+            <ZoomIn size={16} />
           </button>
           <button type="button" className="btn btn-secondary btn-small" onClick={() => setZoom(1)}>
-            Ajustar al ancho
+            <Maximize2 size={14} /> Ajustar al ancho
           </button>
         </div>
         <div className="toolbar-group" role="group" aria-label="Herramienta">
           {(
             [
-              ["select", "Ver hallazgos"],
-              ["create", "Marcar zona"],
-              ["text", "Copiar texto"],
+              ["select", "Ver hallazgos", MousePointer2],
+              ["create", "Marcar zona", SquareDashed],
+              ["text", "Copiar texto", TextCursorInput],
             ] as const
-          ).map(([m, label]) => (
+          ).map(([m, label, Icon]) => (
             <button
               key={m}
               type="button"
@@ -294,7 +295,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
               aria-pressed={mode === m}
               onClick={() => (setMode(m), select(null))}
             >
-              {label}
+              <Icon size={14} /> {label}
             </button>
           ))}
         </div>
@@ -530,10 +531,10 @@ function FindingDetail(props: {
         </select>
       </label>
       <button type="button" className="btn btn-secondary btn-small" disabled={props.busy || status === f.status} onClick={() => props.onSave(status)}>
-        Guardar estado
+        <Save size={14} /> Guardar estado
       </button>{" "}
       <button type="button" className="btn btn-danger btn-small" onClick={props.onDelete}>
-        Eliminar hallazgo
+        <Trash2 size={14} /> Eliminar hallazgo
       </button>
     </div>
   );

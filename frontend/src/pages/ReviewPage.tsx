@@ -1,4 +1,5 @@
 import { Link, useParams } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { errorMessage } from "../api/client";
 import { useAnalysis, useDocument, useRules } from "../api/hooks";
 import { PdfReview } from "../components/PdfReview";
@@ -15,15 +16,15 @@ export function ReviewPage() {
       <div className="card-header-row">
         <h2>Revisión visual de hallazgos</h2>
         <Link className="btn btn-secondary" to={`/analisis/${id}`}>
-          ← Volver al análisis
+          <ArrowLeft size={16} /> Volver al análisis
         </Link>
       </div>
       {err ? (
-        <p className="form-msg error">{errorMessage(err)}</p>
+        <p className="form-msg error" role="alert">{errorMessage(err)}</p>
       ) : analysis.data && doc.data && rules.data ? (
         <PdfReview analysis={analysis.data} document={doc.data} rules={rules.data} />
       ) : (
-        <p className="hint">Cargando…</p>
+        <p className="loading" role="status">Cargando…</p>
       )}
     </div>
   );

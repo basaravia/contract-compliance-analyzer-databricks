@@ -1,3 +1,4 @@
+import { Plus, X } from "lucide-react";
 export interface RefDraft {
   citation: string;
   page: string;
@@ -35,12 +36,12 @@ export function ReferenceFields({ value, onChange }: { value: RefDraft[]; onChan
             onChange={(e) => set(i, { page: e.target.value })}
           />
           <button type="button" className="btn btn-secondary btn-small" onClick={() => onChange(value.filter((_, j) => j !== i))}>
-            Quitar
+            <X size={14} /> Quitar
           </button>
         </div>
       ))}
       <button type="button" className="btn btn-secondary btn-small" onClick={() => onChange([...value, { citation: "", page: "" }])}>
-        + Añadir referencia
+        <Plus size={14} /> Añadir referencia
       </button>
     </fieldset>
   );
