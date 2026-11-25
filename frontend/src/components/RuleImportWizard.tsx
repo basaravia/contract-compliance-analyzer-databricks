@@ -15,7 +15,7 @@ Descripción: El contrato debe fijar un plazo máximo de notificación.
 Referencia: LOPDP Art. 44`;
 
 type Source = "excel" | "texto" | "json";
-const STEPS = ["Elegir cómo cargar", "Revisar", "Listo"];
+const STEPS = ["Elegir formato", "Revisar", "Listo"];
 
 /** Carga de criterios en 3 pasos: elegir → revisar (vista previa con errores por fila) → listo. */
 export function RuleImportWizard() {
@@ -75,33 +75,49 @@ export function RuleImportWizard() {
 
       {step === 0 && (
         <>
-          <div className="toolbar-group source-picker" role="group" aria-label="Formato de origen">
+          <p className="hint">Sube muchos criterios de una vez. Antes de guardar nada verás una vista previa para corregir lo que haga falta.</p>
+          <p className="field-title" id="format-title">Elige cómo vas a cargarlos</p>
+          <div className="format-cards" role="radiogroup" aria-labelledby="format-title">
             {(
               [
-                ["excel", "Excel (recomendado)", FileSpreadsheet],
-                ["texto", "Pegar texto", ClipboardPaste],
-                ["json", "Archivo JSON", FileJson],
+                ["excel", "Excel", "Rellena una plantilla y súbela. Lo más cómodo para muchos criterios.", FileSpreadsheet, "Recomendado"],
+                ["texto", "Pegar texto", "Escribe o pega los criterios en un cuadro de texto.", ClipboardPaste, ""],
+                ["json", "Archivo JSON", "Para equipos técnicos que ya tienen los criterios en este formato.", FileJson, ""],
               ] as const
-            ).map(([s, label, Icon]) => (
-              <button key={s} type="button" aria-pressed={source === s} className={"btn btn-small " + (source === s ? "btn-primary" : "btn-secondary")} onClick={() => (setSource(s), setFile(null), setMessage(""))}>
-                <Icon size={14} /> {label}
+            ).map(([s, label, desc, Icon, tag]) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={source === s}
+                className={"format-card" + (source === s ? " selected" : "")}
+                onClick={() => (setSource(s), setFile(null), setMessage(""))}
+              >
+                <Icon size={20} aria-hidden="true" />
+                <span className="format-card-title">
+                  {label} {tag && <span className="tag-soft">{tag}</span>}
+                </span>
+                <span className="format-card-desc">{desc}</span>
               </button>
             ))}
           </div>
 
+          <p className="field-title">{source === "texto" ? "Escribe o pega los criterios" : "Prepara y sube el archivo"}</p>
           {source === "excel" && (
-            <div className="source-panel">
-              <p>
-                <strong>1.</strong> Descarga la plantilla, escribe un criterio por fila y guárdala.
-                <br />
+            <ol className="how-steps">
+              <li>
+                <span>Descarga la plantilla de Excel.</span>
                 <button type="button" className="btn btn-secondary btn-small" onClick={() => download("/api/rules/template.xlsx", "plantilla-criterios.xlsx").catch((e) => setMessage(errorMessage(e)))}>
-                  <Download size={14} /> Descargar plantilla de Excel
+                  <Download size={14} /> Descargar plantilla
                 </button>
-              </p>
-              <p>
-                <strong>2.</strong> Sube el archivo.
-              </p>
-            </div>
+              </li>
+              <li>
+                <span>Escribe un criterio por fila y guarda el archivo.</span>
+              </li>
+              <li>
+                <span>Súbelo aquí.</span>
+              </li>
+            </ol>
           )}
           {source === "texto" && (
             <div className="source-panel">
@@ -113,21 +129,26 @@ export function RuleImportWizard() {
               <textarea rows={8} aria-label="Texto de criterios" placeholder="Pega aquí los criterios…" value={text} onChange={(e) => setText(e.target.value)} />
             </div>
           )}
-          {source === "json" && <p className="hint source-panel">Para equipos técnicos: un archivo JSON con la lista de criterios.</p>}
+          {source === "json" && <p className="hint source-panel">Elige un archivo JSON con la lista de criterios.</p>}
           {needsFile && (
-            <label className="file-pick">
-              {source === "excel" ? "Archivo de Excel (.xlsx)" : "Archivo JSON (.json)"}
+            <label className={"dropzone" + (file ? " has-file" : "")}>
               <input
                 type="file"
                 key={source}
+                className="sr-only"
+                aria-label={source === "excel" ? "Archivo de Excel (.xlsx)" : "Archivo JSON (.json)"}
                 accept={source === "excel" ? ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : ".json,application/json"}
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               />
+              {file ? <CircleCheck size={20} aria-hidden="true" /> : <Upload size={20} aria-hidden="true" />}
+              <span>{file ? file.name : `Haz clic para elegir el archivo (${source === "excel" ? ".xlsx" : ".json"})`}</span>
             </label>
           )}
+          <p className="field-title">Revisa antes de guardar</p>
           <button type="button" className="btn btn-primary" disabled={!ready || preview.isPending} onClick={review}>
             {preview.isPending ? "Revisando…" : <><ListChecks size={16} /> Revisar antes de cargar</>}
           </button>
+          {!ready && <span className="hint"> {needsFile ? "Elige un archivo para continuar." : "Escribe al menos un criterio para continuar."}</span>}
           {message && <p className="form-msg error" role="alert">{message}</p>}
         </>
       )}

@@ -1,11 +1,12 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Eye, FileDown, FileSpreadsheet, Play, RefreshCw, ScanSearch } from "lucide-react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Eye, FileDown, FileSpreadsheet, Play, RefreshCw, ScanSearch } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { download, errorMessage } from "../api/client";
 import { useAnalyses, useAnalysis, useAnalysisProgress, useDocuments, useRules, useRunAnalysis } from "../api/hooks";
 import { ANALYSIS_STATUS_LABELS, SEVERITY_LABELS, STATUS_HELP, STATUS_LABELS, type FindingStatus } from "../api/types";
 import { certainty } from "../components/AiAssistant";
+import { AiBadge } from "../components/AiBadge";
 import { AnalysisProgressPanel } from "../components/AnalysisProgressPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { StatusPill } from "../components/StatusPill";
@@ -44,6 +45,14 @@ function FindingsCard({ id }: { id: string }) {
   const rules = useRules();
   const ruleName = (rid: string) => rules.data?.find((r) => r.id === rid)?.name ?? rid;
   const [exportError, setExportError] = useState("");
+  // Filas con la justificación desplegada. Texto largo en una celda de tabla ensancha todo: va en un detalle plegable.
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggleRow = (fid: string) =>
+    setOpen((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(fid)) next.add(fid);
+      return next;
+    });
 
   const save = (path: string, filename: string) =>
     download(`/api/analyses/${id}/${path}`, filename).then(
@@ -87,10 +96,20 @@ function FindingsCard({ id }: { id: string }) {
         ))}
       </ul>
       <p className="hint">Pulsa «Revisar en el PDF» para ver cada hallazgo marcado en el contrato, corregirlo o analizarlo de nuevo con IA.</p>
-      <table className="data-table">
+      <div className="table-tools">
+        <button
+          type="button"
+          className="link-btn"
+          onClick={() => setOpen(open.size === a.findings.length ? new Set() : new Set(a.findings.map((f) => f.id)))}
+        >
+          {open.size === a.findings.length ? <ChevronsDownUp size={14} /> : <ChevronsUpDown size={14} />}{" "}
+          {open.size === a.findings.length ? "Contraer todas las justificaciones" : "Expandir todas las justificaciones"}
+        </button>
+      </div>
+      <table className="data-table results-table">
         <thead>
           <tr>
-            <th>Criterio</th>
+            <th>Criterio y justificación</th>
             <th>Resultado</th>
             <th>Importancia</th>
             <th>
@@ -100,18 +119,66 @@ function FindingsCard({ id }: { id: string }) {
           </tr>
         </thead>
         <tbody>
-          {a.findings.map((f) => (
-            <tr key={f.id}>
-              <td>{ruleName(f.rule_id)}</td>
-              <td>
-                <StatusPill status={f.status} />
-                {(f.is_manual || f.edited) && <span className="tag">{f.is_manual ? "agregado por ti" : "corregido por ti"}</span>}
-              </td>
-              <td>{SEVERITY_LABELS[f.severity] ?? f.severity}</td>
-              <td>{certainty(f.confidence)}</td>
-              <td>{f.page ?? "—"}</td>
-            </tr>
-          ))}
+          {a.findings.map((f) => {
+            const isOpen = open.has(f.id);
+            const pages = [f.page, ...(f.extra_regions ?? []).map((r) => r.page)].filter((p, i, arr): p is number => p != null && arr.indexOf(p) === i);
+            const warnings = (f.trace?.limitations ?? []).filter((l) => l.includes("no se encontró en el documento"));
+            return (
+              <Fragment key={f.id}>
+                <tr className={isOpen ? "row-open" : ""}>
+                  <td>
+                    <button
+                      type="button"
+                      className="row-toggle"
+                      aria-expanded={isOpen}
+                      aria-controls={`just-${f.id}`}
+                      onClick={() => toggleRow(f.id)}
+                    >
+                      {isOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+                      <span className="row-toggle-text">
+                        <span className="row-title">{ruleName(f.rule_id)}</span>
+                        {!isOpen && f.justification && <span className="row-preview">{f.justification}</span>}
+                      </span>
+                    </button>
+                  </td>
+                  <td>
+                    <StatusPill status={f.status} />
+                    {(f.is_manual || f.edited) && <span className="tag">{f.is_manual ? "agregado por ti" : "corregido por ti"}</span>}
+                  </td>
+                  <td>{SEVERITY_LABELS[f.severity] ?? f.severity}</td>
+                  <td>{certainty(f.confidence)}</td>
+                  <td>{pages.length ? pages.join("–") : "—"}</td>
+                </tr>
+                {isOpen && (
+                  <tr className="detail-row" id={`just-${f.id}`}>
+                    <td colSpan={5}>
+                      <div className="detail-block">
+                        <p className="detail-label">
+                          Justificación {!f.is_manual && !f.edited && <AiBadge />}
+                        </p>
+                        <p className="detail-text">{f.justification || "—"}</p>
+                        {f.evidence_text && (
+                          <>
+                            <p className="detail-label">Evidencia en el contrato{pages.length ? ` (p. ${pages.join("–")})` : ""}</p>
+                            <blockquote className="evidence">{f.evidence_text}</blockquote>
+                          </>
+                        )}
+                        {warnings.length > 0 && (
+                          <div className="notice warn">
+                            <ul>
+                              {warnings.map((w, i) => (
+                                <li key={i}>{w}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
       <details className="help">
@@ -150,6 +217,14 @@ export function AnalysisPage() {
     const d = docs.data?.find((x) => x.id === docId);
     return d ? (d.title ?? d.original_filename) : docId;
   };
+
+  const allRef = useRef<HTMLInputElement>(null);
+  const allMarked = activeRules.length > 0 && activeRules.every((r) => selected.has(r.id));
+  const someMarked = !allMarked && activeRules.some((r) => selected.has(r.id));
+  useEffect(() => {
+    if (allRef.current) allRef.current.indeterminate = someMarked;
+  }, [someMarked]);
+  const toggleAll = () => setSelected(allMarked ? new Set() : new Set(activeRules.map((r) => r.id)));
 
   const toggle = (rid: string) =>
     setSelected((s) => {
@@ -196,6 +271,17 @@ export function AnalysisPage() {
             </label>
             <fieldset>
               <legend>Criterios a evaluar <span className="optional">(si no marcas ninguno, se usan todos los activos)</span></legend>
+              {activeRules.length > 0 && (
+                <div className="select-all-row">
+                  <label className="inline-check">
+                    <input ref={allRef} type="checkbox" checked={allMarked} onChange={toggleAll} />
+                    <strong>{allMarked ? "Desmarcar todos" : "Marcar todos"}</strong>
+                  </label>
+                  <span className="hint" aria-live="polite">
+                    {selected.size === 0 ? `Ninguno marcado: se evaluarán los ${activeRules.length}` : `${selected.size} de ${activeRules.length} marcados`}
+                  </span>
+                </div>
+              )}
               <div className="checkbox-list">
                 {activeRules.map((r) => (
                   <label key={r.id}>

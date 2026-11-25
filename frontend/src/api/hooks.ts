@@ -89,7 +89,7 @@ export function useFindingMutations(analysisId: string) {
   return {
     moveBbox: useMutation({
       mutationFn: (v: { id: string; bbox: BBox }) =>
-        apiJson<Finding>(`/api/findings/${v.id}`, "PATCH", { bbox: v.bbox, recalculate: true }),
+        apiJson<Finding>(`/api/findings/${v.id}`, "PATCH", { bbox: v.bbox, recalculate: false }),
       onSuccess: refresh,
     }),
     setStatus: useMutation({
@@ -119,13 +119,14 @@ export function useFindingMutations(analysisId: string) {
     }),
     /** Pide la propuesta de la IA para un recuadro (nuevo o existente) sin guardar nada. */
     analyze: useMutation({
-      mutationFn: (v: { ruleId: string; page: number; bbox: BBox; instructions: string }) =>
+      mutationFn: (v: { ruleId: string; page: number; bbox: BBox; instructions: string; deep?: boolean }) =>
         apiJson<RegionProposal>("/api/findings/analyze", "POST", {
           analysis_id: analysisId,
           rule_id: v.ruleId,
           page: v.page,
           bbox: v.bbox,
           instructions: v.instructions.trim(),
+          deep: !!v.deep,
         }),
     }),
     applyProposal: useMutation({

@@ -59,7 +59,7 @@ describe("App", () => {
       return json([]);
     });
     mount("/reglas");
-    await userEvent.click(await screen.findByRole("button", { name: "Pegar texto" }));
+    await userEvent.click(await screen.findByRole("radio", { name: /Pegar texto/ }));
     await userEvent.type(screen.getByLabelText("Texto de criterios"), "Regla: x");
     await userEvent.click(screen.getByRole("button", { name: "Revisar antes de cargar" }));
     expect(await screen.findByText(/Bloque 2:/)).toBeInTheDocument();
@@ -124,5 +124,54 @@ describe("App", () => {
     expect(screen.getByText("Evaluando criterios")).toHaveAttribute("aria-current", "step");
     expect(screen.getByRole("progressbar", { name: "Avance del análisis" })).toHaveAttribute("aria-valuenow", "38");
     expect(screen.getByText(/Falta aproximadamente/)).toBeInTheDocument();
+  });
+
+  const RULES = [
+    { id: "r1", name: "Plazo de entrega", description: "d", severity: "alta", active: true, jurisdiction: "EC", references: [], category: null },
+    { id: "r2", name: "Confidencialidad", description: "d", severity: "media", active: true, jurisdiction: "EC", references: [], category: null },
+  ];
+
+  it("en «Criterios a evaluar» una casilla marca y desmarca todos, y avisa cuántos hay marcados", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/auth/me") return json({ email: "a@b.c", name: "A", auth_mode: "databricks" });
+      if (url === "/api/rules") return json(RULES);
+      if (url.startsWith("/api/documents")) return json([{ id: "d1", doc_type: "contrato", title: "Contrato", original_filename: "c.pdf", jurisdiction: "EC", page_count: 2, extraction_status: "done", uploaded_at: "2026-01-01T00:00:00" }]);
+      return json([]);
+    });
+    mount("/analisis");
+    const all = await screen.findByRole("checkbox", { name: "Marcar todos" });
+    expect(screen.getByText(/Ninguno marcado: se evaluarán los 2/)).toBeInTheDocument();
+    await userEvent.click(all);
+    expect(screen.getByText("2 de 2 marcados")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Plazo de entrega" })).toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Desmarcar todos" }));
+    expect(screen.getByRole("checkbox", { name: "Plazo de entrega" })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Confidencialidad" }));
+    expect(screen.getByText("1 de 2 marcados")).toBeInTheDocument();
+  });
+
+  it("en los resultados la justificación se despliega por fila, con la evidencia y su página", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === "/auth/me") return json({ email: "a@b.c", name: "A", auth_mode: "databricks" });
+      if (url === "/api/rules") return json(RULES);
+      if (url === "/api/analyses/a1")
+        return json({ id: "a1", contract_document_id: "d1", status: "done", error_message: null, created_by: null,
+          created_at: "2026-01-01T00:00:00", finished_at: "2026-01-01T00:01:00", rule_ids: ["r1"],
+          findings: [{ id: "f1", analysis_id: "a1", rule_id: "r1", status: "cumple", justification: "La cláusula quinta fija diez días.",
+            evidence_text: "El plazo será de diez días.", normative_refs: [], page: 5, bbox_x0: 1, bbox_y0: 1, bbox_x1: 2, bbox_y1: 2,
+            confidence: 0.9, severity: "alta", is_manual: false, edited: false, trace: null, ai_instructions: null,
+            extra_regions: [{ page: 6, x0: 1, y0: 1, x1: 2, y1: 2 }], updated_at: "2026-01-01T00:01:00" }] });
+      return json([]);
+    });
+    mount("/analisis/a1");
+    const toggle = await screen.findByRole("button", { name: /Plazo de entrega/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Evidencia en el contrato", { exact: false })).not.toBeInTheDocument();
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("El plazo será de diez días.")).toBeInTheDocument();
+    expect(screen.getByText(/Evidencia en el contrato \(p\. 5–6\)/)).toBeInTheDocument();
   });
 });

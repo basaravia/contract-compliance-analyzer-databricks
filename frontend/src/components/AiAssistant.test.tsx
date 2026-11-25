@@ -15,7 +15,7 @@ describe("AiAssistant", () => {
     await userEvent.click(screen.getByRole("button", { name: "Analizar con IA" }));
     expect(await screen.findByText("La cláusula lo cubre.")).toBeInTheDocument();
     expect(screen.getByText(/Nivel de certeza: Alta/)).toBeInTheDocument();
-    expect(analyze).toHaveBeenCalledWith("solo días hábiles");
+    expect(analyze).toHaveBeenCalledWith("solo días hábiles", false);
     expect(accept).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Aceptar y guardar" }));
     await waitFor(() => expect(accept).toHaveBeenCalledWith(proposal, "solo días hábiles"));

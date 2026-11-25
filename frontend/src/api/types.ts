@@ -115,6 +115,8 @@ export interface Finding {
   edited: boolean;
   trace: FindingTrace | null;
   ai_instructions: string | null;
+  /** Tramos de una cláusula que continúa en otras páginas (el primero va en page/bbox_*). */
+  extra_regions?: { page: number; x0: number; y0: number; x1: number; y1: number }[];
   updated_at: string;
 }
 

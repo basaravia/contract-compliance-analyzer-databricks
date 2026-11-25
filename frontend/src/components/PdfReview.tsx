@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize2, MousePointer2, Save, SquareDashed, TextCursorInput, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Sparkles, ChevronLeft, ChevronRight, Maximize2, MousePointer2, Save, SquareDashed, TextCursorInput, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import { AiAssistant, certainty } from "./AiAssistant";
+import { AiBadge } from "./AiBadge";
 import { PdfPageView, usePdfDocument } from "./PdfPageView";
 import { errorMessage } from "../api/client";
 import { useFindingMutations } from "../api/hooks";
@@ -82,17 +83,23 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
   const ruleName = (id: string) => rules.find((r) => r.id === id)?.name ?? id;
   const onPage = analysis.findings.filter((f) => f.page === page && hasBbox(f));
   const selected = analysis.findings.find((f) => f.id === selectedId) ?? null;
+  // Cláusulas que empiezan en otra página y continúan en esta: se dibujan discontinuas, con el color del hallazgo.
+  const continuations = analysis.findings.flatMap((f) =>
+    (f.extra_regions ?? []).filter((r) => r.page === page).map((r) => ({ f, rect: bboxToPx({ bbox_x0: r.x0, bbox_y0: r.y0, bbox_x1: r.x1, bbox_y1: r.y1 }) })),
+  );
+  // Hallazgos cuyo recuadro se movió: el estado y la justificación siguen siendo los de antes hasta reprocesar con IA.
+  const [stale, setStale] = useState<Set<string>>(new Set());
 
   // El dibujo lee siempre los últimos valores a través de un ref: el arrastre repinta a 60 fps sin re-render de React.
-  const live = useRef({ onPage, selectedId, pending });
-  live.current = { onPage, selectedId, pending };
+  const live = useRef({ onPage, selectedId, pending, continuations });
+  live.current = { onPage, selectedId, pending, continuations };
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const { onPage, selectedId, pending } = live.current;
+    const { onPage, selectedId, pending, continuations } = live.current;
     const drag = dragRef.current;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (const f of onPage) {
@@ -102,6 +109,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
       drawRect(ctx, r, STATUS_COLORS[f.status] ?? "#737373", isSel);
       if (isSel) drawHandles(ctx, r);
     }
+    for (const { f, rect } of continuations) drawRect(ctx, rect, STATUS_COLORS[f.status] ?? "#737373", f.id === selectedId, true);
     if (drag?.type === "create") drawRect(ctx, normalizeRect(drag.start, drag.current), "#1d4ed8", false, true);
     else if (pending) drawRect(ctx, pending, "#1d4ed8", true, true);
   }, []);
@@ -126,7 +134,7 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(redraw, [redraw, analysis.findings, selectedId, pending]);
+  useEffect(redraw, [redraw, analysis.findings, selectedId, pending, page]);
 
   const pos = (e: React.PointerEvent<HTMLCanvasElement>): Point => {
     const c = canvasRef.current!;
@@ -171,7 +179,8 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
       select(hit.f.id);
       dragRef.current = { type: "move", id: hit.f.id, orig: hit.r, start: p, preview: hit.r };
     } else {
-      select(null);
+      const cont = continuations.find(({ rect }) => pointInRect(p, rect, 2));
+      select(cont ? cont.f.id : null);
     }
   };
 
@@ -200,10 +209,17 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
       setPending(r);
       return;
     }
-    // Mover/redimensionar dispara el recálculo real de la evidencia en el backend.
+    // Un simple clic (sin arrastrar) no cambia nada: no se guarda ni se marca como editado.
+    const moved = (["x0", "y0", "x1", "y1"] as const).some((k) => Math.abs(d.preview[k] - d.orig[k]) > 1);
+    if (!moved) return redraw();
+    // Mover/redimensionar NO ejecuta la IA: solo guarda el recuadro y refresca el texto que contiene.
+    // El auditor decide si quiere reprocesar con IA (con sus propias indicaciones) desde el panel.
     mut.moveBbox.mutate(
       { id: d.id, bbox: pxRectToBboxPt(d.preview, canvas.width, canvas.height) },
-      { onError: (err) => (setError(errorMessage(err)), redraw()) },
+      {
+        onSuccess: () => setStale((s) => new Set(s).add(d.id)),
+        onError: (err) => (setError(errorMessage(err)), redraw()),
+      },
     );
   };
 
@@ -367,8 +383,8 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
               <AiAssistant
                 key={pendingKey}
                 acceptLabel="Aceptar y guardar el hallazgo"
-                analyze={(instructions) =>
-                  mut.analyze.mutateAsync({ ruleId: newRuleId, page, bbox: pxRectToBboxPt(pending, canvasRef.current!.width, canvasRef.current!.height), instructions })
+                analyze={(instructions, deep) =>
+                  mut.analyze.mutateAsync({ ruleId: newRuleId, page, bbox: pxRectToBboxPt(pending, canvasRef.current!.width, canvasRef.current!.height), instructions, deep })
                 }
                 accept={async (proposal, instructions) => {
                   const f = await mut.create.mutateAsync({
@@ -405,15 +421,25 @@ export function PdfReview({ analysis, document: doc, rules }: Props) {
               finding={selected}
               ruleName={ruleName(selected.rule_id)}
               busy={mut.setStatus.isPending}
-              analyze={(instructions) =>
+              staleBox={stale.has(selected.id)}
+              analyze={(instructions, deep) =>
                 mut.analyze.mutateAsync({
                   ruleId: selected.rule_id,
                   page: selected.page ?? page,
                   bbox: { x0: selected.bbox_x0!, y0: selected.bbox_y0!, x1: selected.bbox_x1!, y1: selected.bbox_y1! },
                   instructions,
+                  deep,
                 })
               }
-              apply={(proposal, instructions) => mut.applyProposal.mutateAsync({ id: selected.id, proposal, instructions })}
+              apply={async (proposal, instructions) => {
+                const out = await mut.applyProposal.mutateAsync({ id: selected.id, proposal, instructions });
+                setStale((s) => {
+                  const n = new Set(s);
+                  n.delete(selected.id);
+                  return n;
+                });
+                return out;
+              }}
               onSave={(status) => mut.setStatus.mutate({ id: selected.id, status }, { onError: (err) => setError(errorMessage(err)) })}
               onDelete={() => remove(selected)}
             />
@@ -432,10 +458,12 @@ function FindingDetail(props: {
   busy: boolean;
   onSave: (s: FindingStatus) => void;
   onDelete: () => void;
-  analyze: (instructions: string) => Promise<RegionProposal>;
+  staleBox?: boolean;
+  analyze: (instructions: string, deep: boolean) => Promise<RegionProposal>;
   apply: (proposal: RegionProposal, instructions: string) => Promise<unknown>;
 }) {
   const f = props.finding;
+  const extraPages = (f.extra_regions ?? []).map((r) => r.page);
   const [status, setStatus] = useState<FindingStatus>(f.status);
   const rows: [string, string][] = [
     ["Criterio", props.ruleName],
@@ -444,7 +472,7 @@ function FindingDetail(props: {
     ["Nivel de certeza", certainty(f.confidence)],
     ["Manual", f.is_manual ? "Sí" : "No"],
     ["Editado", f.edited ? "Sí" : "No"],
-    ["Página", f.page != null ? String(f.page) : "—"],
+    ["Página", f.page != null ? [f.page, ...extraPages.filter((p) => p !== f.page)].join(", ") + (extraPages.length ? " (la cláusula continúa)" : "") : "—"],
     ["Justificación", f.justification || "—"],
     ["Texto de evidencia", f.evidence_text || "(sin evidencia extraída)"],
   ];
@@ -453,7 +481,9 @@ function FindingDetail(props: {
       <dl className="detail-list">
         {rows.map(([k, v]) => (
           <div key={k}>
-            <dt>{k}</dt>
+            <dt>
+              {k} {k === "Justificación" && !f.is_manual && !f.edited && <AiBadge />}
+            </dt>
             <dd>{v}</dd>
           </div>
         ))}
@@ -508,11 +538,33 @@ function FindingDetail(props: {
           </dl>
         </details>
       )}
+      {props.staleBox && (
+        <div className="notice info" role="status">
+          <p>
+            <strong>Cambiaste el recuadro.</strong> El texto de evidencia se actualizó, pero el estado y la justificación siguen siendo los de antes.
+          </p>
+          <button
+            type="button"
+            className="btn btn-ai btn-small"
+            onClick={() => {
+              const box = document.getElementById("ai-instructions");
+              box?.scrollIntoView({ block: "center", behavior: "smooth" });
+              box?.focus();
+            }}
+          >
+            <Sparkles size={14} /> Reprocesar con IA
+          </button>
+        </div>
+      )}
       {hasBbox(f) && (
-        <details className="ai-details" open={!!f.ai_instructions}>
-          <summary>Reanalizar este recuadro con IA</summary>
+        <details className="ai-details" open={!!f.ai_instructions || !!props.staleBox}>
+          <summary>
+            <Sparkles size={14} aria-hidden="true" /> Reprocesar este recuadro con IA
+          </summary>
           <AiAssistant
             key={f.id + f.updated_at}
+            reprocess
+            attention={!!props.staleBox}
             initialInstructions={f.ai_instructions ?? ""}
             acceptLabel="Aceptar y aplicar al hallazgo"
             analyze={props.analyze}
