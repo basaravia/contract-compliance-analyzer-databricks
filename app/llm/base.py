@@ -15,6 +15,9 @@ class RetrievedChunk:
     text: str
     bbox: BBoxPoints
     score: float
+    label: str | None = None  # p. ej. «SEGUNDA. DATOS PERSONALES»
+    continues_on: list[int] | None = None  # páginas siguientes que ocupa la misma cláusula
+    cited_from: str | None = None  # si es texto citado: etiqueta de la cláusula que lo menciona
 
 
 @dataclass

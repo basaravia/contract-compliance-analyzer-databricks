@@ -139,6 +139,8 @@ class Finding(Base):
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     edited: Mapped[bool] = mapped_column(Boolean, default=False)
     trace: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Cláusula que continúa en otras páginas: [{"page": n, "x0": ..., "y0": ..., "x1": ..., "y1": ...}, ...]
+    extra_regions: Mapped[list] = mapped_column(JSON, default=list)
     # Indicaciones del auditor con las que se afinó el análisis de IA de este hallazgo (auditable).
     ai_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

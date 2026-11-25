@@ -8,7 +8,7 @@ import threading
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.analysis_engine import evaluate_region, recalculate_finding
+from app.analysis_engine import evaluate_region, recalculate_finding, refresh_evidence_from_regions
 from app.auth import CurrentUser, get_current_user
 from app.db import get_db
 from app.models import Analysis, Document, Finding, Rule
@@ -61,7 +61,7 @@ def analyze_region(
     if not _ai_slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="Hay varios análisis con IA en curso. Espera un momento e inténtalo de nuevo.")
     try:
-        ev = evaluate_region(document, rule, payload.page, BBoxPoints(b.x0, b.y0, b.x1, b.y1), payload.instructions)
+        ev = evaluate_region(document, rule, payload.page, BBoxPoints(b.x0, b.y0, b.x1, b.y1), payload.instructions, deep=payload.deep)
     except Exception:  # noqa: BLE001 - el detalle (rutas, proveedor) va al log, no al cliente
         logger.exception("Falló el análisis con IA de un recuadro")
         raise HTTPException(status_code=502, detail="No se pudo analizar con IA ahora. Inténtalo de nuevo.") from None
@@ -130,6 +130,11 @@ def update_finding(
         finding.bbox_y1 = payload.bbox.y1
 
     finding.edited = True
+
+    if payload.bbox is not None and not payload.recalculate and payload.evidence_text is None:
+        # Mover/redimensionar no ejecuta la IA: solo se actualiza el texto de evidencia con lo que hay en el recuadro.
+        _, document, _rule = _get_analysis_and_rule(db, finding)
+        refresh_evidence_from_regions(finding, document)
 
     if payload.recalculate:
         _, document, rule = _get_analysis_and_rule(db, finding)

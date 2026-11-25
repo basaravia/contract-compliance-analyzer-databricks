@@ -83,6 +83,8 @@ def _build_finding_trace(
     second_pass: str | None = None,
     chunks_scanned: int | None = None,
     chunks_total: int | None = None,
+    notes: list[str] | None = None,
+    reference_summary: list[str] | None = None,
 ) -> dict:
     """Traza de la búsqueda de una regla: qué se recuperó, con qué score y qué
     señales léxicas había. Solo registra lo que realmente ocurrió."""
@@ -95,6 +97,7 @@ def _build_finding_trace(
             f"Búsqueda semántica de {len(retrieved)} fragmento(s) del contrato "
             f"(top_k={TOP_K}{'; ampliada a todo el contrato' if second_pass else ''}) "
             f"y evaluación con proveedor '{settings.llm_provider}'."
+            + ("".join(" " + r for r in (reference_summary or [])))
         ),
         extraction=ExtractionSignal(method=method, is_scanned=scanned, ocr_used=ocr_used),
         lexical_signals=DeterministicSignals(
@@ -114,7 +117,7 @@ def _build_finding_trace(
         grader_rubric=list(result.grader_rubric) if result is not None else [],
         grader_criteria_results=list(result.grader_criteria_results) if result is not None else [],
         justification=justification[:4000],
-        limitations=limitations + (list(result.limitations) if result is not None else []),
+        limitations=limitations + list(notes or []) + (list(result.limitations) if result is not None else []),
         requires_human_review=requires_review or (result.requires_human_review if result is not None else False),
         confidence=confidence,
         second_pass=second_pass,
@@ -136,8 +139,73 @@ def _retrieve(rule: Rule, embedder, index: FaissVectorIndex, chunks_by_id: dict[
     for hit in index.search(query_vec, top_k=top_k):
         chunk = chunks_by_id.get(hit.chunk_id)
         if chunk is not None:
-            out.append(RetrievedChunk(chunk_id=chunk.chunk_id, page=chunk.page, text=chunk.text, bbox=chunk.bbox, score=hit.score))
+            out.append(_to_retrieved(chunk, hit.score))
     return out
+
+
+def _to_retrieved(chunk: Chunk, score: float, cited_from: str | None = None) -> RetrievedChunk:
+    return RetrievedChunk(
+        chunk_id=chunk.chunk_id,
+        page=chunk.page,
+        text=chunk.text,
+        bbox=chunk.bbox,
+        score=score,
+        label=chunk.label,
+        continues_on=[r.page for r in chunk.extra_regions] or None,
+        cited_from=cited_from,
+    )
+
+
+MAX_CITED_EXTRA = 3  # tope de cláusulas citadas que se añaden al contexto de una regla
+
+
+def _with_cited_clauses(retrieved: list[RetrievedChunk], chunks_by_id: dict[str, Chunk]) -> list[RetrievedChunk]:
+    """Una cláusula que dice «conforme a la cláusula quinta» pierde su sentido sin ella: se añade al contexto el
+    texto de las cláusulas citadas por los fragmentos recuperados (un nivel, con tope)."""
+    present = {c.chunk_id for c in retrieved}
+    extra: list[RetrievedChunk] = []
+    for source in list(retrieved):
+        src = chunks_by_id.get(source.chunk_id)
+        if src is None:
+            continue
+        for ref_id in src.refs:
+            if ref_id in present or len(extra) >= MAX_CITED_EXTRA:
+                continue
+            cited = chunks_by_id.get(ref_id)
+            if cited is not None:
+                present.add(ref_id)
+                extra.append(_to_retrieved(cited, 0.0, cited_from=src.label or src.chunk_id))
+    return retrieved + extra
+
+
+def _source_chunk(page: int | None, bbox: BBoxPoints | None, retrieved: list[RetrievedChunk], chunks_by_id: dict[str, Chunk]) -> Chunk | None:
+    """Fragmento del que salió la evidencia que el evaluador citó (por página y recuadro)."""
+    if page is None or bbox is None:
+        return None
+    best: tuple[float, Chunk] | None = None
+    for r in retrieved:
+        chunk = chunks_by_id.get(r.chunk_id)
+        if chunk is None or r.cited_from or chunk.page != page:
+            continue
+        w = min(chunk.bbox.x1, bbox.x1) - max(chunk.bbox.x0, bbox.x0)
+        h = min(chunk.bbox.y1, bbox.y1) - max(chunk.bbox.y0, bbox.y0)
+        overlap = w * h if w > 0 and h > 0 else 0.0
+        if best is None or overlap > best[0]:
+            best = (overlap, chunk)
+    return best[1] if best else None
+
+
+def _reference_notes(source: Chunk | None, chunks_by_id: dict[str, Chunk]) -> tuple[list[str], list[str]]:
+    """(avisos, resumen): citas internas sin destino y cláusulas citadas cuyo texto se incluyó."""
+    if source is None:
+        return [], []
+    label = source.label or source.chunk_id
+    warnings = [
+        f"La cláusula «{label}» cita «{ref}», que no se encontró en el documento: revisa ese enlace."
+        for ref in source.unresolved_refs
+    ]
+    included = [chunks_by_id[r].label or r for r in source.refs[:MAX_CITED_EXTRA] if r in chunks_by_id]
+    return warnings, ([f"Se incluyó el texto de {', '.join('«' + i + '»' for i in included)} porque la cláusula lo cita."] if included else [])
 
 
 def _build_index(chunks: list[Chunk]) -> tuple[FaissVectorIndex, dict[str, Chunk]]:
@@ -174,6 +242,7 @@ def run_analysis(
     for done, rule in enumerate(rules):
         report(done=done, detail=rule.name)
         retrieved: list[RetrievedChunk] = _retrieve(rule, embedder, index, chunks_by_id, TOP_K) if chunks else []
+        retrieved = _with_cited_clauses(retrieved, chunks_by_id)
 
         rule_ctx = RuleContext(
             rule_name=rule.name,
@@ -215,7 +284,7 @@ def run_analysis(
                 else:
                     cap = min(total, max(1, settings.full_scan_max_chunks))
                     report(detail=f"{rule.name} (segunda búsqueda en todo el contrato)")
-                    retrieved = _retrieve(rule, embedder, index, chunks_by_id, cap)
+                    retrieved = _retrieve(rule, embedder, index, chunks_by_id, cap)  # ya incluye todo: no hay citas que añadir
                     wide = evaluator.evaluate(rule_ctx, retrieved)
                     scanned = len(retrieved)
                     if wide.status == "requiere_revision":
@@ -232,12 +301,19 @@ def run_analysis(
                 clamped = BBoxPoints(result.bbox.x0, result.bbox.y0, result.bbox.x1, result.bbox.y1).clamp(width, height)
                 bbox_x0, bbox_y0, bbox_x1, bbox_y1 = clamped.x0, clamped.y0, clamped.x1, clamped.y1
 
+            source = _source_chunk(page, result.bbox, retrieved, chunks_by_id)
+            ref_warnings, ref_summary = _reference_notes(source, chunks_by_id)
+            extra_regions = [
+                {"page": r.page, "x0": r.bbox.x0, "y0": r.bbox.y0, "x1": r.bbox.x1, "y1": r.bbox.y1}
+                for r in (source.extra_regions if source is not None else [])
+            ]
             finding = Finding(
                 analysis_id=analysis.id,
                 rule_id=rule.id,
                 status=result.status,
                 justification=result.justification,
                 evidence_text=result.evidence_text,
+                extra_regions=extra_regions,
                 normative_refs=[{"citation": r.citation, "page": r.page} for r in rule.references],
                 page=page,
                 bbox_x0=bbox_x0,
@@ -257,6 +333,8 @@ def run_analysis(
                 second_pass=second_pass,
                 chunks_scanned=scanned,
                 chunks_total=total if second_pass else None,
+                notes=ref_warnings,
+                reference_summary=ref_summary,
             )
         db.add(finding)
 
@@ -289,8 +367,35 @@ class RegionEvaluation:
     has_text: bool
 
 
+def _context_chunks(path: str, page: int, bbox: BBoxPoints) -> list[RetrievedChunk]:
+    """Cláusula(s) completa(s) que contienen el recuadro y las que estas citan, como contexto del análisis."""
+    chunks = chunk_document(extract_document(path))
+    by_id = {c.chunk_id: c for c in chunks}
+    hits: list[Chunk] = []
+    for c in chunks:
+        if c.kind in ("header", "footer", "side", "stamp"):
+            continue
+        for r in c.regions:
+            w = min(r.bbox.x1, bbox.x1) - max(r.bbox.x0, bbox.x0)
+            h = min(r.bbox.y1, bbox.y1) - max(r.bbox.y0, bbox.y0)
+            if r.page == page and w > 0 and h > 0:
+                hits.append(c)
+                break
+    out: list[RetrievedChunk] = []
+    seen: set[str] = set()
+    for c in hits[:2]:
+        if c.chunk_id not in seen:
+            seen.add(c.chunk_id)
+            out.append(_to_retrieved(c, 0.0, cited_from=f"contexto del recuadro: {c.label or c.chunk_id}"))
+        for ref in c.refs:
+            if ref not in seen and ref in by_id and len(out) < 2 + MAX_CITED_EXTRA:
+                seen.add(ref)
+                out.append(_to_retrieved(by_id[ref], 0.0, cited_from=f"citada desde {c.label or c.chunk_id}"))
+    return out
+
+
 def evaluate_region(
-    document: Document, rule: Rule, page: int, bbox: BBoxPoints, instructions: str = ""
+    document: Document, rule: Rule, page: int, bbox: BBoxPoints, instructions: str = "", deep: bool = False
 ) -> RegionEvaluation:
     """Evalúa con el modelo SOLO el texto nativo contenido en el recuadro: nunca inventa evidencia.
     No toca la base de datos; quien llama decide si guarda el resultado."""
@@ -315,7 +420,13 @@ def evaluate_region(
         normative_citations=[r.citation for r in rule.references],
         extra_instructions=instructions,
     )
-    result = get_rule_evaluator().evaluate(rule_ctx, [chunk])
+    chunks = [chunk]
+    if deep:
+        try:
+            chunks += _context_chunks(str(path), page, bbox)
+        except Exception:  # noqa: BLE001 - sin contexto extra el análisis del recuadro sigue siendo válido
+            logger.warning("No se pudo reunir el contexto ampliado del recuadro", exc_info=True)
+    result = get_rule_evaluator().evaluate(rule_ctx, chunks)
     return RegionEvaluation(
         status=result.status,
         justification=result.justification,
@@ -341,3 +452,20 @@ def recalculate_finding(db: Session, finding: Finding, document: Document, rule:
     finding.justification = ev.justification
     finding.evidence_text = ev.evidence_text
     finding.confidence = ev.confidence
+
+
+def refresh_evidence_from_regions(finding: Finding, document: Document) -> bool:
+    """Tras mover o redimensionar un recuadro SIN pedir IA: actualiza solo el texto de evidencia (lo que hay
+    realmente dentro del recuadro y de los tramos de continuación). No toca el estado ni la justificación:
+    quedan como estaban hasta que el auditor decida reprocesar con IA. Devuelve True si había texto."""
+    if finding.page is None or None in (finding.bbox_x0, finding.bbox_y0, finding.bbox_x1, finding.bbox_y1):
+        return False
+    path = str(resolve_upload_path(document.stored_filename))
+    parts = [extract_text_in_bbox(path, finding.page, BBoxPoints(finding.bbox_x0, finding.bbox_y0, finding.bbox_x1, finding.bbox_y1))]
+    for extra in finding.extra_regions or []:
+        parts.append(extract_text_in_bbox(path, extra["page"], BBoxPoints(extra["x0"], extra["y0"], extra["x1"], extra["y1"])))
+    text = "\n".join(p for p in parts if p).strip()
+    if not text:
+        return False
+    finding.evidence_text = text[:8000]
+    return True

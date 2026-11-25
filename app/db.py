@@ -42,6 +42,8 @@ def init_db() -> None:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN trace JSON"))
             if "ai_instructions" not in finding_columns:
                 connection.execute(text("ALTER TABLE findings ADD COLUMN ai_instructions TEXT"))
+            if "extra_regions" not in finding_columns:
+                connection.execute(text("ALTER TABLE findings ADD COLUMN extra_regions JSON"))
 
 
 def get_db() -> Generator[Session, None, None]:

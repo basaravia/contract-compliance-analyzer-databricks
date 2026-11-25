@@ -267,6 +267,16 @@ class AnalysisTrace(BaseModel):
     limitations: list[str] = Field(default_factory=list)
 
 
+class RegionOut(BaseModel):
+    """Tramo de una cláusula que continúa en otra página."""
+
+    page: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
 class FindingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -288,6 +298,7 @@ class FindingOut(BaseModel):
     edited: bool
     trace: FindingTrace | None = None
     ai_instructions: str | None = None
+    extra_regions: list[RegionOut] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -295,6 +306,11 @@ class FindingOut(BaseModel):
     @classmethod
     def _empty_trace_to_none(cls, v):
         return v or None
+
+    @field_validator("extra_regions", mode="before")
+    @classmethod
+    def _none_regions_to_empty(cls, v):
+        return v or []
 
 
 class AnalysisLiveProgress(BaseModel):
@@ -376,6 +392,8 @@ class RegionAnalyzeIn(BaseModel):
     page: int = Field(..., ge=1)
     bbox: BBox
     instructions: str = Field(default="", max_length=1000)
+    # True = análisis con más contexto: además del recuadro se envía la cláusula completa que lo contiene y las que cita.
+    deep: bool = False
 
 
 class RegionProposalOut(BaseModel):

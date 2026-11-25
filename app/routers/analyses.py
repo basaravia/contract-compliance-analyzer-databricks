@@ -180,6 +180,13 @@ def export_analysis_pdf(
                 note=f.justification,
             )
         )
+        for extra in f.extra_regions or []:  # la cláusula sigue en otra página: se marca también ahí
+            specs.append(
+                AnnotationSpec(
+                    page=extra["page"], x0=extra["x0"], y0=extra["y0"], x1=extra["x1"], y1=extra["y1"],
+                    status=f.status, label=f"{label} (continuación)", note=f.justification,
+                )
+            )
 
     path = resolve_upload_path(document.stored_filename)
     pdf_bytes = build_annotated_pdf(str(path), specs)
