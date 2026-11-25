@@ -542,28 +542,19 @@ function FindingDetail(props: {
         <div className="notice info" role="status">
           <p>
             <strong>Cambiaste el recuadro.</strong> El texto de evidencia se actualizó, pero el estado y la justificación siguen siendo los de antes.
+            Si quieres actualizarlos, usa el asistente de IA de abajo.
           </p>
-          <button
-            type="button"
-            className="btn btn-ai btn-small"
-            onClick={() => {
-              const box = document.getElementById("ai-instructions");
-              box?.scrollIntoView({ block: "center", behavior: "smooth" });
-              box?.focus();
-            }}
-          >
-            <Sparkles size={14} /> Reprocesar con IA
-          </button>
         </div>
       )}
       {hasBbox(f) && (
         <details className="ai-details" open={!!f.ai_instructions || !!props.staleBox}>
           <summary>
-            <Sparkles size={14} aria-hidden="true" /> Reprocesar este recuadro con IA
+            <Sparkles size={14} aria-hidden="true" /> Asistente de IA
           </summary>
           <AiAssistant
             key={f.id + f.updated_at}
             reprocess
+            showTitle={false}
             attention={!!props.staleBox}
             initialInstructions={f.ai_instructions ?? ""}
             acceptLabel="Aceptar y aplicar al hallazgo"

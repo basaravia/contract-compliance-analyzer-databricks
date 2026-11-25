@@ -26,12 +26,14 @@ interface Props {
   initialInstructions?: string;
   /** Texto del botón principal cuando ya hay un resultado previo («Reprocesar con IA»). */
   reprocess?: boolean;
+  /** Muestra la insignia «Asistente de IA» arriba; se oculta cuando el contenedor ya lo rotula. */
+  showTitle?: boolean;
   /** Resalta el bloque (p. ej. tras cambiar el recuadro) para invitar a reprocesar. */
   attention?: boolean;
 }
 
 /** «Analizar con IA»: el modelo propone, la persona decide. Nada se envía ni se guarda sin pulsar el botón. */
-export function AiAssistant({ analyze, accept, acceptLabel, initialInstructions = "", reprocess = false, attention = false }: Props) {
+export function AiAssistant({ analyze, accept, acceptLabel, initialInstructions = "", reprocess = false, attention = false, showTitle = true }: Props) {
   const [instructions, setInstructions] = useState(initialInstructions);
   const [deep, setDeep] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,9 +71,11 @@ export function AiAssistant({ analyze, accept, acceptLabel, initialInstructions 
 
   return (
     <div className={"ai-box" + (busy && !proposal ? " is-thinking" : "") + (attention ? " needs-attention" : "")}>
-      <p className="ai-box-title">
-        <AiBadge>Asistente de IA</AiBadge>
-      </p>
+      {showTitle && (
+        <p className="ai-box-title">
+          <AiBadge>Asistente de IA</AiBadge>
+        </p>
+      )}
       <label>
         Indicaciones para la IA <span className="optional">(opcional)</span>
         <textarea
